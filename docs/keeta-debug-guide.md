@@ -22,11 +22,13 @@ Updated: 2026-10-21 | Scope: Keeta Brazil (São Paulo + Santos), Android app, P3
 | Keeta installed, home screen visible | Done |
 | Address shown: "R. Floriano Peixoto, 1 - Sé, São..." (São Paulo, Sé) | Done |
 | App UI language | **English** (BRD screenshots are pt-BR); see section 4 |
-| Home/store screen dump (`assets/p3.xml`, 40 readable text nodes) | Done — UI-XML route looks viable |
-| Logged-in BR account, P3 reached | Pending |
-| `uiautomator dump` check on P3 | Pending (decides UI-XML vs OCR route) |
+| Feed-list dump (`assets/feed-pizza.xml` / `.png`) | Done — shop cards expose no text; OCR hybrid needed |
+| Shop page + cart dumps (`assets/shop.xml`, `assets/p3.xml` @ 13:04) | Done — native TextViews, fields readable |
+| Logged-in BR account, P3 checkout reached | Done 2026-10-21 13:05 — `assets/p3.png`; **no order placed** |
+| P3 XML dump | **Blocked** — `could not get idle state`; use uiautomator2 with `waitForIdleTimeout=0` |
+| adb input injection | **Blocked** — MIUI `INJECT_EVENTS`; enable *USB debugging (Security settings)* or use accessibility clicks |
 
-> 进度、阻塞项与下一步统一维护在 `notes-todos.md`；本文件只讲**怎么做**。
+> 进度、阻塞项与下一步统一维护在 `TODO.md`；本文件只讲**怎么做**。
 
 ---
 
@@ -85,7 +87,7 @@ Scheduler (Wed/Sat, 11:00-22:59 BRT)
 
 ### Open item: volume mismatch in the BRD
 
-The BRD says 5,000/week, but its formula (2 cities x 500 shops x 1 x 1 account type x 5 distance bands x 2 rounds) gives 10,000. project.md says 30,000/week, which equals the formula with 3 account types. Confirm before sizing devices — tracked as **B1** in `notes-todos.md`.
+The BRD says 5,000/week, but its formula (2 cities x 500 shops x 1 x 1 account type x 5 distance bands x 2 rounds) gives 10,000. project.md says 30,000/week, which equals the formula with 3 account types. Confirm before sizing devices — tracked as **B1** in `TODO.md`.
 
 ---
 
@@ -162,7 +164,7 @@ adb devices
 ```bash
 scrcpy --window-title keeta                       # mirror
 scrcpy --stay-awake --window-title keeta          # needs USB debugging (Security settings)
-scrcpy --record=keeta_test.mp4                    # record evidence video
+scrcpy --record=evidence.mp4                     # record evidence video (not committed: *.mp4 is git-ignored)
 scrcpy --turn-screen-off --stay-awake             # mirror with phone screen off
 scrcpy --max-size 1024 --max-fps 30               # lighter on bandwidth
 ```
@@ -223,6 +225,37 @@ grep -E "Previsão|Subtotal|Taxa de|Total" p3.xml
 
 This result decides the route. Do it first.
 
+### 6.1 What the 2026-10-21 dumps actually showed
+
+**Screen-by-screen accessibility is not uniform.** The feed list, shop page and checkout page need different strategies:
+
+| Screen | Evidence | Result |
+|---|---|---|
+| Feed / search results | `assets/feed-pizza.xml`, 134 nodes, 24 with text or `content-desc` | Shop cards are `ViewGroup` with only `content-desc="feed shopcard"` + promo chips. Name, rating, fee, ETA, distance are **not** in the tree. |
+| Shop detail | `assets/shop.xml`, 45 text nodes | Native `TextView`s. Shop name, `4.9 (50+)`, `10–25 min`, `Free / R$7.99`, item names and `After voucher` prices all readable. |
+| Cart drawer | `assets/p3.xml` @ 13:04, 130 KB | Native text. `Subtotal R$42.90`, `Discount -R$12.33` (Promo -2.14, Voucher -10.19), `Total R$30.57`. Shop page text remains underneath the overlay. |
+| Checkout (P3) | `assets/p3.png` @ 13:05 | Reached, screenshot only. XML dump failed; fee rows still unconfirmed. |
+
+**Feed list needs XML bounds + OCR.** Crop each `feed shopcard` by its `bounds`, upscale 2x and run Tesseract. A sandbox test read `Futuro Kereitorio / 5.0 (40+) / R$4.99 / 26–41 min / 5.2 km` and `Massa do wild / Free / 10–25 min / 1.7 km` correctly. Struck-through original prices are unreliable (`R$14.99` → `2$44-99`) because of the line through the digits; the final fee, ETA and distance are usable. Validate with `R\$ ?\d+[.,]\d{2}`, `\d+[–-]\d+ min`, `\d+[.,]\d km`.
+
+**Checkout arithmetic confirmed from the screenshot.** `42.90 + 7.99 + 0.99 − 10.13 = 41.75`: item original 42.90, delivery original 7.99, service fee 0.99, applied discount 10.13 (item 5% = 2.14 + free delivery 7.99). The cart's `−10.19` voucher was not applied at checkout (`Select at checkout`). This matches the BRD's P3 structure; only the visible fee rows remain to be dumped.
+
+**Timezone mismatch.** Device status bar showed `13:05` (Vancouver) while `Est. arrival` read `17:25-17:40`, i.e. São Paulo time (UTC-3). Set the phone to `America/Sao_Paulo` before production runs, or record the UTC offset with `crawl_time`; otherwise ETA and crawl time are not comparable.
+
+**Two dump pitfalls.**
+
+1. `uiautomator dump` can fail with `ERROR: could not get idle state` when the page has a continuous animation. It writes nothing. `adb pull` then happily returns the **previous** file — always `rm` the remote file first and check `ls -l` before pulling.
+2. The MIUI exception `java.io.FileNotFoundException: /data/system/theme_config/theme_compatibility.xml` is harmless system noise; the dump still succeeds.
+
+**Workaround for idle + input injection.** `uiautomator2` dumps with `waitForIdleTimeout=0` and clicks through accessibility actions, so it avoids both the idle wait and MIUI's `INJECT_EVENTS` restriction:
+
+```python
+import uiautomator2 as u2
+d = u2.connect("f753a0f3")
+d.settings["waitForIdleTimeout"] = 0
+open("assets/p3-new.xml", "w").write(d.dump_hierarchy())
+```
+
 ### Interactive inspection
 
 ```bash
@@ -264,9 +297,20 @@ Android 7+ apps ignore user CA certificates by default, so you will likely need 
 | No restaurants / region error in app | Check BR IP, mock GPS, SIM country before blaming Region |
 | Map/location flaky | Update Google Play Services and Google Maps |
 | Parser finds no `Taxa de entrega` | UI language is English; switch to pt-BR or make the parser bilingual |
+| `uiautomator dump` prints `/data/system/theme_config/theme_compatibility.xml` FileNotFoundException | MIUI system noise; the XML is still written normally |
+| `ERROR: could not get idle state` | A view is animating continuously. Set the three animation scales to 0, wait 10 s, retry; if it still fails, use uiautomator2 with `waitForIdleTimeout=0` |
+| `adb pull` succeeds but the XML is the previous screen | The dump failed and the old file was still on the device. Always `adb shell rm -f /sdcard/p3.xml` first and verify `ls -l` before pulling |
+| `adb pull`: `No such file or directory` | The dump aborted before writing; see the idle-state row |
+| `SecurityException: Injecting to another application requires INJECT_EVENTS permission` | Enable *USB debugging (Security settings)* on MIUI, or click through uiautomator2's accessibility actions instead of `adb shell input` |
 
 ---
 
 ## 9. Next Steps
 
-进度、阻塞项与下一步统一维护在 `notes-todos.md`（A 组环境、C 组管线）。顺序：切 pt-BR → 登录 BR 账号触达 P3 → 在 P3 重跑 dump（`assets/p3.xml` 现存的是首页，不是 P3）→ 建 PoC 管线 → 定量级与设备池 → 再考虑 API replay spike。
+进度、阻塞项与下一步统一维护在 `TODO.md`（A 组环境、C 组管线）。当前顺序：
+
+1. 用 uiautomator2 的 `dump_hierarchy()` 抓 P3（绕过 idle 等待），确认 `Subtotal / Delivery fee / Service fee / Total` 四行是否可读。
+2. 开启 *USB debugging (Security settings)*，或确认 uiautomator2 的无障碍点击可用，解决 `INJECT_EVENTS`。
+3. 把手机时区改为 `America/Sao_Paulo`，再采一条完整 P3 样例，跑金额 QA。
+4. 建 PoC 管线（店铺页 → 加购 → P3 → XML/OCR → 分单位整数），再定量级与设备池。
+5. 最后再评估 API replay spike。

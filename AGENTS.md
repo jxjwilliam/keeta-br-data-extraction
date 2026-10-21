@@ -2,18 +2,21 @@
 
 ## Project Structure
 
-Docs-only repo for a Keeta (美团外卖巴西站) data-extraction project. There is no application source code, dependency manifest, or test suite.
+Docs-first repo for a Keeta (美团外卖巴西站) data-extraction project. There is no application source code, dependency manifest, or test suite — only markdown, the field workbook, device dumps, and throwaway probes in `scripts/`.
 
 - `project.md`: canonical requirements — extraction scope, volume (15000/次, 2 次/周), duration, budget, the 30-field spec with Chinese column names, and the toolchain (POCO X3 NFC + scrcpy + Android debug mode).
-- `notes-todos.md`: **the tracker** — status, open decisions (B1–B11), next steps. Read this first for project state.
+- `TODO.md`: **the tracker** — status, open decisions (B1–B11), next steps. Read this first for project state.
 - `docs/keeta-debug-guide.md`: how to drive the phone (adb, scrcpy, uiautomator dump, BR env setup) — procedures only, no status.
 - `docs/keeta-brazil-research.md`: market background and the "consumer app only, no public API" constraint.
 - `docs/oc-scrape-findings.md`: web-side research transcript — working URLs, share-link parameters (`shopId`, `region=BR`), and what the sandbox could and could not open.
 - `docs/ac-br-抓取小结.md`: the transcribed checkout sample and amount reconciliation.
-- `keeta-checkout-fields-cn.md`: pt-BR checkout-page UI copy not covered by the workbook.
+- `docs/keeta-checkout-fields-cn.md`: pt-BR checkout-page UI copy not covered by the workbook.
 - `docs/p1.md`: stub — its content was merged into `docs/keeta-brazil-research.md`.
 - `assets/keeta-br-结算页字段样例.xlsx`: the 30-field checkout-page spec (5 sheets) + sample data. Tracked in git.
-- `assets/weixin-1.png` … `assets/weixin-3.png`: requirement screenshots; red boxes mark the fields to extract. `weixin-1` = BRD long image, `weixin-3` = checkout page with red boxes. `assets/p3.xml` / `assets/p3.png` = the home-screen uiautomator dump. All tracked; only `*.mp4` (e.g. `keeta_test.mp4`) is git-ignored.
+- `assets/weixin-1.png` … `assets/weixin-3.png`: requirement screenshots; red boxes mark the fields to extract. `weixin-1` = BRD long image, `weixin-3` = checkout page with red boxes.
+- `assets/feed-pizza.xml` / `.png`: search feed list dump (2026-10-21). `assets/shop.xml` / `.png`: shop detail page. `assets/p3.xml`: cart drawer @ 13:04. `assets/p3.png`: P3 `Checkout` screenshot @ 13:05 — no order placed.
+- `scripts/`: ad-hoc device probes (uiautomator2 over USB), not a test suite. Run with the phone attached: `python3 scripts/test1.py`.
+- All of the above are tracked in git; only `*.mp4` recordings are git-ignored (too large to keep).
 
 **Naming convention (from `project.md`):** source-derived research docs are prefixed with the source that produced them — `p1` = Perplexity, `oc` = OpenAI Codex, `ac` = Anthropic Claude, `mm` = Meta Muse. When adding such a doc, prefix it accordingly rather than inventing a new scheme. Operational docs (tracker, setup guide, research digests) use plain descriptive names.
 
@@ -32,8 +35,8 @@ These constraints are easy to violate — check them before writing extraction l
 - Service fee has a single price in the sample: fill both `service_original` and `service_final` with 99 分 rather than leaving one blank or inventing a discount.
 - Distinguish *applied* discounts from visible-but-unused promotions (e.g. "Cupom 1 disponível – até R$ 15,75 OFF"); never combine them in arithmetic.
 - Record collection conditions (address, quantity, account, promotion, timestamp) with each live sample.
-- Batch planning context: per-store point pool at 1–2/2–3/3–4/4–5/5–6 km (5 points each), plus account pool, rate limits, and closed-store rollback — see B6–B8 in `notes-todos.md`.
-- The delivered sample is still a screenshot transcription, not a live quote. The phone-side path (adb → uiautomator dump of P3) now works but has not yet produced a live checkout sample; see C1–C3 in `notes-todos.md`. Do not present sandbox web results as live data.
+- Batch planning context: per-store point pool at 1–2/2–3/3–4/4–5/5–6 km (5 points each), plus account pool, rate limits, and closed-store rollback — see B6–B8 in `TODO.md`.
+- The delivered sample is still a screenshot transcription, not a live quote. The phone-side path (adb → uiautomator dump of P3) now works but has not yet produced a live checkout sample; see C1–C3 in `TODO.md`. Do not present sandbox web results as live data.
 
 ## Coding Style & Naming Conventions
 
