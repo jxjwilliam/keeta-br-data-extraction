@@ -16,3 +16,13 @@ Notes：提取解析红框内的数据
 - Macbook Pro scrcpy
 - 阿里网盘
 - 微信
+
+
+## Naming Convention
+
+| abbr | mean |
+| --- | --- |
+| p1 | perplexity ask first |
+| oc | openai codex |
+| ac | anthropic claud |
+| mm | meta muse |
