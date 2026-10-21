@@ -1,0 +1,18 @@
+{
+  "fee_capture": "2026-10-21T17:25:49-03:00",
+  "item_capture": "2026-10-21T17:26:20-03:00",
+  "merchant": "Massa do wild",
+  "item": "1 × Espaguete à Bolonhesa",
+  "portion": "Porção de 400g",
+  "item_price": "R$40.76",
+  "item_original": "R$42.90",
+  "fee_labels": [
+    "Subtotal R$42.90",
+    "Discounts -R$2.14",
+    "Delivery fee R$7.99 Free",
+    "Service fee R$0.99",
+    "Total R$41.75",
+    "R$10.13 off applied"
+  ],
+  "address_source": "User supplied current default address"
+}

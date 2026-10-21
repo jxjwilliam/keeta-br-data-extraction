@@ -25,7 +25,7 @@ Updated: 2026-10-21 | Scope: Keeta Brazil (São Paulo + Santos), Android app, P3
 | Feed-list dump (`assets/feed-pizza.xml` / `.png`) | Done — shop cards expose no text; OCR hybrid needed |
 | Shop page + cart dumps (`assets/shop.xml`, `assets/p3.xml` @ 13:04) | Done — native TextViews, fields readable |
 | Logged-in BR account, P3 checkout reached | Done 2026-10-21 13:05 — `assets/p3.png`; **no order placed** |
-| P3 XML dump | **Blocked** — `could not get idle state`; use uiautomator2 with `waitForIdleTimeout=0` |
+| P3 XML dump | Verified with `d.jsonrpc.setConfigurator({"waitForIdleTimeout": 0})`; standard adb dump still fails |
 | adb input injection | **Blocked** — MIUI `INJECT_EVENTS`; enable *USB debugging (Security settings)* or use accessibility clicks |
 
 > 进度、阻塞项与下一步统一维护在 `TODO.md`；本文件只讲**怎么做**。
@@ -247,12 +247,12 @@ This result decides the route. Do it first.
 1. `uiautomator dump` can fail with `ERROR: could not get idle state` when the page has a continuous animation. It writes nothing. `adb pull` then happily returns the **previous** file — always `rm` the remote file first and check `ls -l` before pulling.
 2. The MIUI exception `java.io.FileNotFoundException: /data/system/theme_config/theme_compatibility.xml` is harmless system noise; the dump still succeeds.
 
-**Workaround for idle + input injection.** `uiautomator2` dumps with `waitForIdleTimeout=0` and clicks through accessibility actions, so it avoids both the idle wait and MIUI's `INJECT_EVENTS` restriction:
+**Verified idle-wait workaround.** The configurator call below allows live checkout XML capture. Automated scrolling remains blocked by MIUI `INJECT_EVENTS`; ask the operator to scroll manually. This does not bypass input permissions.
 
 ```python
 import uiautomator2 as u2
 d = u2.connect("f753a0f3")
-d.settings["waitForIdleTimeout"] = 0
+d.jsonrpc.setConfigurator({"waitForIdleTimeout": 0})
 open("assets/p3-new.xml", "w").write(d.dump_hierarchy())
 ```
 

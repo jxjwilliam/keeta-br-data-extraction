@@ -2,7 +2,7 @@
 
 ## Project Structure
 
-Docs-first repo for a Keeta (美团外卖巴西站) data-extraction project. There is no application source code, dependency manifest, or test suite — only markdown, the field workbook, device dumps, and throwaway probes in `scripts/`.
+Docs-first repo for a Keeta (美团外卖巴西站) data-extraction project. There is no application source code, dependency manifest, or test suite — only Markdown, workbooks, and device evidence.
 
 - `project.md`: canonical requirements — extraction scope, volume (15000/次, 2 次/周), duration, budget, the 30-field spec with Chinese column names, and the toolchain (POCO X3 NFC + scrcpy + Android debug mode).
 - `TODO.md`: **the tracker** — status, open decisions (B1–B11), next steps. Read this first for project state.
@@ -11,11 +11,10 @@ Docs-first repo for a Keeta (美团外卖巴西站) data-extraction project. The
 - `docs/oc-scrape-findings.md`: web-side research transcript — working URLs, share-link parameters (`shopId`, `region=BR`), and what the sandbox could and could not open.
 - `docs/ac-br-抓取小结.md`: the transcribed checkout sample and amount reconciliation.
 - `docs/keeta-checkout-fields-cn.md`: pt-BR checkout-page UI copy not covered by the workbook.
-- `docs/p1.md`: stub — its content was merged into `docs/keeta-brazil-research.md`.
 - `assets/keeta-br-结算页字段样例.xlsx`: the 30-field checkout-page spec (5 sheets) + sample data. Tracked in git.
 - `assets/weixin-1.png` … `assets/weixin-3.png`: requirement screenshots; red boxes mark the fields to extract. `weixin-1` = BRD long image, `weixin-3` = checkout page with red boxes.
 - `assets/feed-pizza.xml` / `.png`: search feed list dump (2026-10-21). `assets/shop.xml` / `.png`: shop detail page. `assets/p3.xml`: cart drawer @ 13:04. `assets/p3.png`: P3 `Checkout` screenshot @ 13:05 — no order placed.
-- `scripts/`: ad-hoc device probes (uiautomator2 over USB), not a test suite. Run with the phone attached: `python3 scripts/test1.py`.
+- No maintained extractor or executable scripts are currently provided. One-off probes and the temporary-file-dependent workbook builder were removed. Follow `docs/keeta-debug-guide.md` for verified capture commands.
 - All of the above are tracked in git; only `*.mp4` recordings are git-ignored (too large to keep).
 
 **Naming convention (from `project.md`):** source-derived research docs are prefixed with the source that produced them — `p1` = Perplexity, `oc` = OpenAI Codex, `ac` = Anthropic Claude, `mm` = Meta Muse. When adding such a doc, prefix it accordingly rather than inventing a new scheme. Operational docs (tracker, setup guide, research digests) use plain descriptive names.

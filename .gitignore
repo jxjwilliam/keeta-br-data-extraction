@@ -11,6 +11,9 @@ credentials*.json
 # Excel lock files
 ~$*.xlsx
 
+# Generated workbook inspection reports
+*.inspect.ndjson
+
 # Future code: Python / Node
 __pycache__/
 *.pyc
@@ -26,3 +29,6 @@ assets/*
 !assets/*.xlsx
 !assets/*.png
 !assets/*.xml
+
+# Regenerable workbook previews
+outputs/**/preview-*.png

@@ -7,10 +7,12 @@
 
 ### 立刻下一步（按依赖顺序）
 
-1. **用 uiautomator2 抓 P3 XML**：`d.settings["waitForIdleTimeout"]=0` + `d.dump_hierarchy()`，绕过 `could not get idle state`；确认 `Subtotal / Delivery fee / Service fee / Total` 是否可读。
+2026-10-21 Codex 实测更新：`uiautomator2` 的 `d.settings["waitForIdleTimeout"]` 在当前版本无效；改用 `d.jsonrpc.setConfigurator({"waitForIdleTimeout": 0})` 后成功读取实时 Checkout XML。设备时区已实测为 `America/Sao_Paulo`。实时商品及费用读取成功，导出 `outputs/keeta-live-20261021/keeta-实时30字段.xlsx`，包含 30 列、1 条记录，16 个字段有值（含默认上下文、计算值及服务费项目口径），14 个未取得字段留空。原始总额为分项求和计算值，地址为用户确认的默认地址，均在来源表中标注。当前 ADB 滑动仍报 `INJECT_EVENTS`，未更改安全设置；本轮未取得实时 ETA，不能用历史截图补入。未提交订单。C2 已验证可行，C3 只完成单条导出，尚未形成批量管线。
+
+1. **补采实时 ETA**：费用和商品 XML 已读取；提醒操作者手动滚到结算页顶部，再读取地址和预计送达区间，不混用历史截图。
 2. **解决输入注入**：开启 MIUI「USB 调试（安全设置）」；或验证 uiautomator2 的无障碍点击（`d(text="...").click()`）是否可用。
-3. **统一时区**：手机改为 `America/Sao_Paulo`，或在 `crawl_time` 记录 UTC 偏移；当前状态栏 13:05 与 ETA 17:25–17:40 差 4 小时。
-4. **展开结算页费用行**（Total 行或下滑），截 `assets/p3-fees.png`（尚未生成），补齐配送费/服务费原始值。
+3. **时区已验证**：设备当前为 `America/Sao_Paulo`；每次采集继续保存 UTC 偏移。
+4. **费用已留证**：`outputs/keeta-live-20261021/fees.png` 与 `evidence.json`；商品和费用来自同一结算会话。
 5. 拿到 P3 文本后落一条完整实时样例，跑金额 QA，再谈 15,000/次的批量与设备池规模。
 
 ### A. 环境与工具链（`docs/keeta-debug-guide.md` §1 / §4 / §5）
@@ -45,7 +47,7 @@
 ### C. 采集链路与管线（`docs/keeta-debug-guide.md` §6 / §7 / §9）
 
 - [x] **C1 登录 BR 账号并触达 P3**。2026-10-21 13:05 已进入 `Checkout` 页（未点 `Place order`），截图留证 `assets/p3.png`：地址 `Work - Rua Floriano Peixoto, 1, São Paulo, SP, Sé`、`Est. arrival 17:25-17:40`、`Massa do wild / 1 × Espaguete à Bolonhesa / R$40.76 (R$42.90)`、`Total R$41.75`、`R$10.13 off applied`。店铺页留证 `assets/shop.xml`，购物车抽屉留证 `assets/p3.xml`（13:04）。
-- [ ] **C2 P3 的 uiautomator dump（关键分叉点）**。店铺页和购物车层已证明是原生 TextView，字段可直接解析。13:05 的 `assets/p3.png` 已是 `Checkout` 页，但 `assets/p3.xml` 仍是 13:04 的购物车内容——`uiautomator dump` 报 `could not get idle state`，**写文件失败后 pull 到了旧文件**。金额已用截图核对：`42.90 + 7.99 + 0.99 − 10.13 = 41.75`，即商品原价 42.90、配送费原价 7.99、服务费 0.99、优惠 10.13（商品 5% 折 2.14 + 免配送 7.99）。**下一步**：先 `adb shell rm -f /sdcard/p3.xml` 再 dump，确认 `ls -l` 时间戳更新后再 pull；若结算页费用行折叠，需展开或下滑后重 dump。2026-10-21 13:10 重试仍报 `could not get idle state` 且文件未生成，页面存在持续动画；改用 `uiautomator2` 的 `dump_hierarchy()`（`waitForIdleTimeout=0`）绕开 idle 等待。
+- [x] **C2 P3 XML 已验证（下述为历史排错）**。店铺页和购物车层已证明是原生 TextView，字段可直接解析。13:05 的 `assets/p3.png` 已是 `Checkout` 页，但 `assets/p3.xml` 仍是 13:04 的购物车内容——`uiautomator dump` 报 `could not get idle state`，**写文件失败后 pull 到了旧文件**。金额已用截图核对：`42.90 + 7.99 + 0.99 − 10.13 = 41.75`，即商品原价 42.90、配送费原价 7.99、服务费 0.99、优惠 10.13（商品 5% 折 2.14 + 免配送 7.99）。**下一步**：先 `adb shell rm -f /sdcard/p3.xml` 再 dump，确认 `ls -l` 时间戳更新后再 pull；若结算页费用行折叠，需展开或下滑后重 dump。2026-10-21 13:10 重试仍报 `could not get idle state` 且文件未生成，页面存在持续动画；改用 `uiautomator2` 的 `dump_hierarchy()`（`waitForIdleTimeout=0`）绕开 idle 等待。
 - [ ] **C3 PoC 管线**。XML 解析 → 金额归一为整数分 → CSV/XLSX 导出（`batch_no = YYYYMMDD`），内置 QA 校验：`total_final == product_final + delivery_final + service_final`（45.00+2.99+0.99=48.98）、`delivery_original − delivery_final` 等于优惠行（12.99−2.99=10.00）、`ceta_min <= ceta_max`、截图与提取值逐条比对。
 - [ ] **C4 店铺 list 来源**。需求表说采集范围是「指定店铺 list，见下方文件」，该文件尚未拿到。**下一步**：向需求方索取 list（含优先级排序、KA/SKA 分层）。
 - [ ] **C5 API replay spike（可选，后置）**。mitmproxy + `adb reverse` + Frida 绕 SSL pinning（Android 7+ 默认不信任用户 CA）。成本约为 UI 方案的 1/100，但封号风险更高、需 root。**下一步**：先做完 C2 再评估是否值得做。
@@ -55,6 +57,5 @@
 ### D. 已覆盖 / 无需再跟踪
 
 - `assets/keeta-br-结算页字段样例.xlsx` —— 30 字段中文对照 + 样例数据 + 红框原文对照 + 金额校验公式，已完成，且与 `project.md` 字段表逐行一致（已自动比对）。
-- `docs/p1.md` —— 已并入 `docs/keeta-brazil-research.md`，现为历史索引，无待办。
 - `docs/oc-scrape-findings.md` —— 只剩网页侧调研与分享链接参数。沙箱内 `m.keeta-global.com` / `m.mykeeta.com` / `url-eu.mykeeta.com` 被网络策略拦截，这**不是**项目阻塞项：真实抓取走手机 + BR 网络，web 侧只作参考。
 - 凭据规范（`AGENTS.md`）—— 密码、验证码、Cookie 不进文档、截图和提交；采集证据里如需账号信息，只留脱敏标识。
