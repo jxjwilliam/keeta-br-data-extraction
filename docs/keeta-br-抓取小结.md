@@ -1,6 +1,6 @@
 # 巴西 Keeta 结算页抓取小结
 
-日期：2026-10-20
+日期：2026-10-20  
 范围：巴西站 Keeta App 结算页（P3 页面 ETA），一条可核对的中文样例
 
 ## 一、结论
@@ -9,35 +9,35 @@
 
 ## 二、App 核验
 
-| 项目 | 内容 |
-| --- | --- |
-| 应用名称 | Keeta - Food Delivery（葡语区显示 Keeta - Delivery de comida） |
-| Android 包名 | com.sankuai.sailor.afooddelivery |
-| 开发者 | KANGAROO LIMITED（美团关联主体） |
-| 参考版本 | 3.12.501（2026-10 查询，实际以商店为准） |
-| Android 入口 | https://play.google.com/store/apps/details?hl=pt-BR&id=com.sankuai.sailor.afooddelivery |
-| iOS 入口 | https://apps.apple.com/br/app/keeta-delivery-de-comida/id1662451643 |
-| 业务城市 | 圣保罗（São Paulo）及大圣保罗；试点含桑托斯、圣维森特 |
+| 项目         | 内容                                                                                         |
+| ---------- | ------------------------------------------------------------------------------------------ |
+| 应用名称       | Keeta - Food Delivery（葡语区显示 Keeta - Delivery de comida）                                    |
+| Android 包名 | com.sankuai.sailor.afooddelivery                                                           |
+| 开发者        | KANGAROO LIMITED（美团关联主体）                                                                   |
+| 参考版本       | 3.12.501（2026-10 查询，实际以商店为准）                                                               |
+| Android 入口 | <https://play.google.com/store/apps/details?hl=pt-BR\&id=com.sankuai.sailor.afooddelivery> |
+| iOS 入口     | <https://apps.apple.com/br/app/keeta-delivery-de-comida/id1662451643>                      |
+| 业务城市       | 圣保罗（São Paulo）及大圣保罗；试点含桑托斯、圣维森特                                                            |
 
 用户提供的商户分享链接为 App 唤起页（`shopId=159559935`、`region=BR`）。`m.keeta-global.com`、`m.mykeeta.com`、`url-eu.mykeeta.com` 在当前沙箱均被网络策略拦截，无法打开，也未核实该店与截图是否为同一家。
 
 ## 三、样例数据（截图转录）
 
-配送地址：Rua Marcílio de Sá, 231 - Jardim das Vertentes, São Paulo - SP
+配送地址：Rua Marcílio de Sá, 231 - Jardim das Vertentes, São Paulo - SP  
 店铺：Açaí tapioca WRK
 
-| 中文列名 | 葡语原文 | 数值 |
-| --- | --- | --- |
-| 店铺名称 | Açaí tapioca WRK | 3 itens（3 件） |
-| 商品明细 | 3 × Tapioca Com Nutella | 3 份 Nutella 榛子可可酱木薯饼 |
-| 商品金额 | — | R$ 45,00（单价 R$ 15,00，推算） |
-| 预计送达时段 | Previsão | 07:12–07:27（时刻区间，不是时长） |
-| 商品小计（原价） | Subtotal | R$ 45,00 |
-| 配送费原价 | Taxa de entrega（划线） | R$ 12,99 |
-| 配送费折后价 | Taxa de entrega | R$ 2,99 |
-| 服务费 | Taxa de serviço | R$ 0,99 |
-| 订单总额 | Total | R$ 48,98 |
-| 已应用优惠 | Desconto de R$ 10,00 aplicado | R$ 10,00 |
+| 中文列名     | 葡语原文                          | 数值                       |
+| -------- | ----------------------------- | ------------------------ |
+| 店铺名称     | Açaí tapioca WRK              | 3 itens（3 件）             |
+| 商品明细     | 3 × Tapioca Com Nutella       | 3 份 Nutella 榛子可可酱木薯饼     |
+| 商品金额     | —                             | R$ 45,00（单价 R$ 15,00，推算） |
+| 预计送达时段   | Previsão                      | 07:12–07:27（时刻区间，不是时长）   |
+| 商品小计（原价） | Subtotal                      | R$ 45,00                 |
+| 配送费原价    | Taxa de entrega（划线）           | R$ 12,99                 |
+| 配送费折后价   | Taxa de entrega               | R$ 2,99                  |
+| 服务费      | Taxa de serviço               | R$ 0,99                  |
+| 订单总额     | Total                         | R$ 48,98                 |
+| 已应用优惠    | Desconto de R$ 10,00 aplicado | R$ 10,00                 |
 
 金额核对：45.00 + 2.99 + 0.99 = 48.98；12.99 − 2.99 = 10.00。原价总额 58.98 为分项推算，页面未单列。页面另有「Cupom 1 disponível – até R$ 15,75 OFF」「Ganhe 35% de desconto」，本单未使用，不能与已减的 10.00 混算。
 
