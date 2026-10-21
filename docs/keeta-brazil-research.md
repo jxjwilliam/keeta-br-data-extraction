@@ -36,7 +36,7 @@
 - 商业数据商（Real Data API、Actowiz、Food Data Scrape）在卖 Keeta 抓取服务，但主要针对沙特市场；其字段 schema 与上面一致，并提到 JS 渲染、反爬、UI 频繁变更等障碍。
 
 ## 结论（对步骤②的影响）
-数据只在 App 内：找到红框类似数据的现实路径是 App 内部接口或商家门户。抓取路线与设备方案见 `docs/keeta-debug-guide.md`，进度见 `notes-todos.md`。
+数据只在 App 内：找到红框类似数据的现实路径是 App 内部接口或商家门户。抓取路线与设备方案见 `docs/keeta-debug-guide.md`，进度见 `TODO.md`。
 
 ## 主要来源
 - TechBuzzChina 两篇 Keeta 系列；Caixin Global 2025-10-31；economiasp 2026-10-07 扩张报道；TechTudo Keeta 介绍；Google Play 商店页（包名/下载量）；PYMNTS/CADE 反垄断报道。

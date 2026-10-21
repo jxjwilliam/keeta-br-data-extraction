@@ -1,6 +1,6 @@
 # 巴西 Keeta 抓取初查与中文字段样例
 
-查询日期：2026-10-20。本文件是 **网页侧初查记录的唯一出处**（公开 URL、分享链接参数）；字段口径与进度见 `project.md`、`notes-todos.md`。
+查询日期：2026-10-20。本文件是 **网页侧初查记录的唯一出处**（公开 URL、分享链接参数）；字段口径与进度见 `project.md`、`TODO.md`。
 
 ## 当前结果
 
@@ -56,7 +56,7 @@
 
 ## 下一步所需信息
 
-进度、阻塞项与下一步统一维护在 `notes-todos.md`（C1 登录并触达 P3、C2 在 P3 重跑 uiautomator dump）。
+进度、阻塞项与下一步统一维护在 `TODO.md`（C1 已登录并到 P3、C2 用 uiautomator2 抓 P3 XML、C7 解决 MIUI 输入注入）。
 
 
 ### Scraping solution
