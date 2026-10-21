@@ -3,23 +3,17 @@
 日期：2026-10-20  
 范围：巴西站 Keeta App 结算页（P3 页面 ETA），一条可核对的中文样例
 
+> 本文件只保留 **样例数据与金额核算**。字段清单见 `project.md` §采集字段，字段级取值说明见 `assets/keeta-br-结算页字段样例.xlsx`，进度与待办见 `notes-todos.md`。
+
 ## 一、结论
 
 巴西消费端 App 已核验；但当前环境无法直连 Keeta 网页/App，实时抓取未打通。本次交付的是一条**基于参考截图转录并翻译**的完整样例，用于确认字段口径和中文命名，不代表当前线上报价。
 
+> 手机侧环境已在 2026-10-21 打通（adb/scrcpy/uiautomator dump），见 `docs/keeta-debug-guide.md`。
+
 ## 二、App 核验
 
-| 项目         | 内容                                                                                         |
-| ---------- | ------------------------------------------------------------------------------------------ |
-| 应用名称       | Keeta - Food Delivery（葡语区显示 Keeta - Delivery de comida）                                    |
-| Android 包名 | com.sankuai.sailor.afooddelivery                                                           |
-| 开发者        | KANGAROO LIMITED（美团关联主体）                                                                   |
-| 参考版本       | 3.12.501（2026-10 查询，实际以商店为准）                                                               |
-| Android 入口 | <https://play.google.com/store/apps/details?hl=pt-BR\&id=com.sankuai.sailor.afooddelivery> |
-| iOS 入口     | <https://apps.apple.com/br/app/keeta-delivery-de-comida/id1662451643>                      |
-| 业务城市       | 圣保罗（São Paulo）及大圣保罗；试点含桑托斯、圣维森特                                                            |
-
-用户提供的商户分享链接为 App 唤起页（`shopId=159559935`、`region=BR`）。`m.keeta-global.com`、`m.mykeeta.com`、`url-eu.mykeeta.com` 在当前沙箱均被网络策略拦截，无法打开，也未核实该店与截图是否为同一家。
+应用信息（名称、包名、开发者、版本、商店入口、业务城市、分享链接）统一维护在 `project.md` §Info，此处不重复。
 
 ## 三、样例数据（截图转录）
 
@@ -43,20 +37,17 @@
 
 ## 四、字段口径
 
-需求表共 30 个字段，已在 Excel 中逐条给出中英文对照，金额统一按「分」存储（R$ 45.00 = 4500 分）。取值要点：
+30 个字段的逐条中文对照、样例取值与取值说明在 `assets/keeta-br-结算页字段样例.xlsx` 的「字段中文对照」表；实现口径见 `project.md`。两条最容易踩的：
 
-- 已有值：batch_no、country、platform、city_name、shop_name、crawl_address、ceta_min/ceta_max、product_info、product_original/final、delivery_original/final、service_original/final、total_original/final、shop_status。
-- 截图中缺失、未编造：account_id、user_completed_orders_count、account_type、is_member、shop_id、shop_address、crawl_lat/lng、shop_lat/lng、distance。
-- `ceta_min/ceta_max` 在图中是送达时刻（07:12/07:27），不是配送分钟数；若要时长，需同时记录采集时刻、日期和时区。
-- 服务费只有一个价格，无法区分原价与折后价，两者均填 99 分。
+- `ceta_min` / `ceta_max` 是送达时刻（07:12 / 07:27），不是配送分钟数。
+- 服务费页面只显示一个价格，原价与折后价均填 99 分，不留空也不编造折扣。
 
 ## 五、下一步
 
-1. 在巴西网络环境用真实账号打开分享链接，确认游客能否浏览，记录登录态、GPS 与收货地址。
-2. 先跑通单店单账号链路（店铺页 → 加购 → 结算页），确认 30 个字段是否都能取到，再评估每次 15000 条、每周两次的批量方案。
-3. 批量采集需解决账号池、点位池（距店 1–2/2–3/3–4/4–5/5–6 km 各 5 个点）、频控与店铺歇业回滚。
-4. 每条记录保存采集时间、地址、账号类型和优惠信息，否则价格不可复现。
+统一见 `notes-todos.md`：C1 登录 BR 账号并触达 P3、C2 在 P3 重跑 uiautomator dump、C3 PoC 管线。
 
 ## 六、交付物
 
-`keeta-br-结算页字段样例.xlsx`，含 5 个工作表：说明、字段中文对照、样例数据、红框原文对照、参考截图。金额校验公式全部通过。
+- `assets/keeta-br-结算页字段样例.xlsx` —— 5 个工作表：说明、字段中文对照、样例数据、红框原文对照、参考截图。金额校验公式全部通过。
+- `keeta-checkout-fields-cn.md` —— 提单页可见文案的中葡对照。
+- `notes-todos.md` —— 进度、阻塞项与下一步。

@@ -16,3 +16,13 @@ __pycache__/
 *.pyc
 .venv/
 node_modules/
+
+# Large local media (never commit)
+*.mp4
+
+# Assets: keep the spec workbook, the requirement screenshots and the UI dumps;
+# ignore anything else generated locally.
+assets/*
+!assets/*.xlsx
+!assets/*.png
+!assets/*.xml
