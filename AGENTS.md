@@ -12,8 +12,8 @@ Docs-only repo for a Keeta (美团外卖巴西站) data-extraction project. Ther
 - `docs/ac-br-抓取小结.md`: the transcribed checkout sample and amount reconciliation.
 - `keeta-checkout-fields-cn.md`: pt-BR checkout-page UI copy not covered by the workbook.
 - `docs/p1.md`: stub — its content was merged into `docs/keeta-brazil-research.md`.
-- `assets/keeta-br-结算页字段样例.xlsx`: the 30-field checkout-page spec (5 sheets) + sample data. `assets/` is git-ignored, so this file is **untracked** — copy it out before sharing the repo.
-- `assets/weixin-1.png` … `assets/weixin-3.png`: requirement screenshots; red boxes mark the fields to extract. `weixin-1` = BRD long image, `weixin-3` = checkout page with red boxes. `assets/p3.xml` / `assets/p3.png` = the home-screen uiautomator dump, `keeta_test.mp4` = scrcpy recording. All of `assets/` plus `*.mp4` are git-ignored, so they stay local-only.
+- `assets/keeta-br-结算页字段样例.xlsx`: the 30-field checkout-page spec (5 sheets) + sample data. Tracked in git.
+- `assets/weixin-1.png` … `assets/weixin-3.png`: requirement screenshots; red boxes mark the fields to extract. `weixin-1` = BRD long image, `weixin-3` = checkout page with red boxes. `assets/p3.xml` / `assets/p3.png` = the home-screen uiautomator dump. All tracked; only `*.mp4` (e.g. `keeta_test.mp4`) is git-ignored.
 
 **Naming convention (from `project.md`):** source-derived research docs are prefixed with the source that produced them — `p1` = Perplexity, `oc` = OpenAI Codex, `ac` = Anthropic Claude, `mm` = Meta Muse. When adding such a doc, prefix it accordingly rather than inventing a new scheme. Operational docs (tracker, setup guide, research digests) use plain descriptive names.
 
