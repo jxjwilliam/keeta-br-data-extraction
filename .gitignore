@@ -32,3 +32,6 @@ assets/*
 
 # Regenerable workbook previews
 outputs/**/preview-*.png
+
+output/
+outputs/
