@@ -1,0 +1,32 @@
+<?xml version='1.0' encoding='utf-8'?>
+<hierarchy>
+  <node package="com.sankuai.sailor.afooddelivery" text="Checkout" bounds="[108,102][330,246]" />
+  <node package="com.sankuai.sailor.afooddelivery" text="Select a delivery address" bounds="[117,246][1076,291]" />
+  <node package="com.sankuai.sailor.afooddelivery" text="Rua Jandaia, 7550, São Paulo, SP" bounds="[153,372][692,424]" />
+  <node package="com.sankuai.sailor.afooddelivery" text="Bela Vista" bounds="[153,424][692,474]" />
+  <node package="com.sankuai.sailor.afooddelivery" text="Est. arrival 14:09-14:24" bounds="[117,617][617,686]" />
+  <node package="com.sankuai.sailor.afooddelivery" text="On-time Promise" bounds="[201,749][547,807]" />
+  <node package="com.sankuai.sailor.afooddelivery" text="If your order arrives 15 min late or more, you’ll get at least a voucher of R$10.00." bounds="[144,814][1157,915]" />
+  <node package="com.sankuai.sailor.afooddelivery" text="Payment method" bounds="[36,1092][1019,1164]" />
+  <node package="com.sankuai.sailor.afooddelivery" text="More" bounds="[1019,1100][1123,1156]" />
+  <node package="com.sankuai.sailor.afooddelivery" text="Pix " bounds="[135,1241][204,1298]" />
+  <node package="com.sankuai.sailor.afooddelivery" text="Add more payment methods" bounds="[135,1419][702,1476]" />
+  <node package="com.sankuai.sailor.afooddelivery" text="Order summary" bounds="[36,1665][461,1739]" />
+  <node package="com.sankuai.sailor.afooddelivery" text="Porque Sim - Pinheiros / Vila Madalena" bounds="[180,1775][1031,1833]" />
+  <node package="com.sankuai.sailor.afooddelivery" text="1 item" bounds="[180,1839][1031,1891]" />
+  <node package="com.sankuai.sailor.afooddelivery" text="Edit" bounds="[1049,1775][1124,1835]" />
+  <node package="com.sankuai.sailor.afooddelivery" text="1 × Shoyu Lamen (6% Off) - Shoyu Kikkoman / Importado do Japão" bounds="[36,1919][917,2037]" />
+  <node package="com.sankuai.sailor.afooddelivery" text="R$38.28" bounds="[1001,1919][1157,1979]" />
+  <node package="com.sankuai.sailor.afooddelivery" text="R$63.80" bounds="[1016,1979][1157,2031]" />
+  <node package="com.sankuai.sailor.afooddelivery" text="What to do if an item is out of stock?" bounds="[135,2160][743,2210]" />
+  <node package="com.sankuai.sailor.afooddelivery" text="Choose" bounds="[998,2145][1160,2225]" />
+  <node package="com.sankuai.sailor.afooddelivery" text="Instant savings" bounds="[36,2309][1193,2383]" />
+  <node package="com.sankuai.sailor.afooddelivery" text="Voucher" bounds="[165,2458][360,2525]" />
+  <node package="com.sankuai.sailor.afooddelivery" text="1 available, maximum R$11.48 off" bounds="[165,2531][717,2570]" />
+  <node package="com.sankuai.sailor.afooddelivery" text="Apply now" bounds="[899,2492][1109,2550]" />
+  <node package="com.sankuai.sailor.afooddelivery" text="Get 30% off as a new customer" bounds="[610,2419][1127,2433]" />
+  <node package="com.sankuai.sailor.afooddelivery" text="Save 30% with your new customer voucher" bounds="[195,2213][1038,2273]" />
+  <node package="com.sankuai.sailor.afooddelivery" text="Total R$43.26" bounds="[36,2398][396,2475]" />
+  <node package="com.sankuai.sailor.afooddelivery" text="R$35.52 off applied" bounds="[36,2475][358,2527]" />
+  <node package="com.sankuai.sailor.afooddelivery" text="Place order" bounds="[827,2428][1097,2495]" />
+</hierarchy>

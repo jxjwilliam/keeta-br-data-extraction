@@ -2,7 +2,7 @@ import sys,subprocess,json,datetime,time,re
 from pathlib import Path
 import xml.etree.ElementTree as E
 import uiautomator2 as u
-OUT=Path('/Users/william.jiang/Desktop/keeta/outputs/keeta-rerun-20261021')
+OUT=Path('/Users/william.jiang/Desktop/keeta/outputs/internal/runs/keeta-rerun-20261021')
 d=u.connect('f753a0f3')
 d.jsonrpc.setConfigurator({'waitForIdleTimeout':0})
 args=sys.argv[1:]; label=args.pop(0)

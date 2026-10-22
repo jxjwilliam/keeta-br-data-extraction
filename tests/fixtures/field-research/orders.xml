@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<hierarchy>
+  <node package="com.sankuai.sailor.afooddelivery" text="My orders" bounds="[102,140][339,207]" />
+  <node package="com.sankuai.sailor.afooddelivery" text="No orders yet" bounds="[450,1508][769,1575]" />
+  <node package="com.sankuai.sailor.afooddelivery" text="Check out popular stores nearby!" bounds="[283,1590][936,1649]" />
+  <node package="com.sankuai.sailor.afooddelivery" text="Find stores" bounds="[390,1709][829,1848]" />
+</hierarchy>

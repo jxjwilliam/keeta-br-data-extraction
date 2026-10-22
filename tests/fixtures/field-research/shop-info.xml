@@ -1,0 +1,14 @@
+<?xml version='1.0' encoding='utf-8'?>
+<hierarchy>
+  <node package="com.sankuai.sailor.afooddelivery" text="Porque Sim - Pinheiros / Vila Madalena" bounds="[141,261][1170,333]" />
+  <node package="com.sankuai.sailor.afooddelivery" text="Japanese, Yakisoba" bounds="[141,342][462,392]" />
+  <node package="com.sankuai.sailor.afooddelivery" text="Open" bounds="[141,560][267,627]" />
+  <node package="com.sankuai.sailor.afooddelivery" text="Closes at 22:30" bounds="[141,636][390,688]" />
+  <node package="com.sankuai.sailor.afooddelivery" text="Address" bounds="[141,810][326,877]" />
+  <node package="com.sankuai.sailor.afooddelivery" text="Rua Wisard, 88, Vila Madalena, SAO PAULO, SP, 05434000﻿ " bounds="[141,886][1141,938]" />
+  <node package="com.sankuai.sailor.afooddelivery" text="Keeta delivery" bounds="[141,1696][467,1763]" />
+  <node package="com.sankuai.sailor.afooddelivery" text="Order status and courier location are tracked in real time. In case of delays, On-time Promise will have you covered." bounds="[141,1772][1184,1873]" />
+  <node package="com.sankuai.sailor.afooddelivery" text="Payment method" bounds="[141,1982][535,2049]" />
+  <node package="com.sankuai.sailor.afooddelivery" text="Min. order" bounds="[141,2261][380,2328]" />
+  <node package="com.sankuai.sailor.afooddelivery" text="R$35" bounds="[141,2337][225,2389]" />
+</hierarchy>
