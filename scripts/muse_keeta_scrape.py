@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Keeta 提单页数据自动抓取 v1 (ADB + uiautomator2)
+Keeta 提单页数据自动抓取 v5 (ADB + uiautomator2) —— 卡片坐标找店 + OCR 补列表信息; v4 防风控纪律 + 锁定即停沿用
 
 流程: 启动 Keeta -> 读账号信息 -> 逐家进店 -> 加一件高销菜 -> 进提单页(Resumo do pedido)
       -> 提取红框字段 + 截图 -> 写 30 列 CSV (BRD 字段顺序)
@@ -13,6 +13,18 @@ Keeta 提单页数据自动抓取 v1 (ADB + uiautomator2)
 - v2 全自动: 无任何人工暂停。导航/选店/加菜/规格选择/凑起送价/清购物车全部自动;
   单家失败自动跳过并继续下一家, 每步截图+控件树存 debug/ 供事后校准选择器。
 - 绝不点击 "Fazer pedido" (提交订单)。
+- v4 防风控: 圣保罗营业时间窗口守卫 (11:00-22:59 之外拒绝运行, --anytime 可跳过);
+  单轮硬上限 12 家; 每家之间随机休息 60-180 秒; 进店后先随机滚动浏览再加菜;
+  点击坐标带随机抖动; 一旦页面出现网络错误/验证墙特征 -> 判定被锁, 立即停止
+  整轮运行, 不重试不硬闯 (避免延长锁定), 已采集的行照常落盘。
+- v4.1 预检: 正式采集前先确认首页能找到店铺行; 找不到直接收工不消耗尝试。
+- v4.2 预检修正 (实测教训): 首页前几屏是横幅/分类/礼包区, 店铺流在下面 ——
+  预检改成逐屏下滑找 5 屏, 还找不到就重启 App 再找一轮 (全自动自愈);
+  店铺行检测的像素阈值按屏幕尺寸比例缩放 (X3/X6 通用)。
+- v5 找店重写 (实测教训): 新版 Keeta 列表卡片是自绘渲染, 控件树里只有
+  content-desc='feed shopcard' 的空壳节点 (无文字) —— 改按卡片坐标框找店、点中心进店;
+  卡片上的店名/距离/时长用截图 OCR 补 (macOS Vision/Tesseract, 无引擎则留空,
+  店名进店后从店铺页读)。店铺页/提单页仍是原生文字, 原解析不变。
 
 在 Mac 上运行 (POCO X3 已 USB 连接、Keeta 已登录、配送地址为账号缺省):
     pip3 install uiautomator2
@@ -24,10 +36,11 @@ Keeta 提单页数据自动抓取 v1 (ADB + uiautomator2)
 
 import csv
 import os
+import random
 import re
 import sys
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 try:
@@ -40,6 +53,19 @@ SP_TZ = ZoneInfo("America/Sao_Paulo")
 PACKAGE = "com.sankuai.sailor.afooddelivery"
 OUT_DIR = os.path.expanduser("~/Desktop/keeta/output")
 DEBUG_DIR = os.path.join(OUT_DIR, "debug")
+
+# ---- v4 防风控参数 ----
+SESSION_CAP = 12            # 单轮硬上限 (家)
+REST_BETWEEN = (60, 180)    # 每家之间随机休息 (秒)
+SP_OPEN_H, SP_CLOSE_H = 11, 23   # 圣保罗采集窗口 11:00-22:59
+LOCK_TEXTS = ("network connection error", "network error", "please check your network",
+              "erro de conexão", "verifique sua conexão", "sem conexão",
+              "falha ao carregar", "failed to load",
+              "access error", "please try again later", "tente novamente mais tarde",
+              "captcha", "slide to verify", "deslize para verificar")
+
+class LockedError(Exception):
+    """检测到疑似风控锁定/验证墙时抛出, 主流程立即停止整轮运行。"""
 
 FIELDS = [
     "batch_no", "country", "platform", "city_name", "crawl_time",
@@ -94,6 +120,73 @@ def joined(texts):
     return "\n".join(texts)
 
 
+def rsleep(a, b=None):
+    """随机时长睡眠 (拟人节奏)。"""
+    if b is None:
+        a, b = 0.5, a
+    time.sleep(random.uniform(a, b))
+
+
+def guard_not_locked(d, where=""):
+    """页面出现网络错误/验证墙特征 -> 抛 LockedError, 整轮立即停止。"""
+    try:
+        texts, _ = texts_of(d)
+    except Exception:
+        return
+    blob = joined(texts).lower()
+    for t in LOCK_TEXTS:
+        if t in blob:
+            save_debug(d, "locked")
+            raise LockedError("命中锁定特征 '%s' (%s)" % (t, where))
+
+
+def preflight_home_loaded(d):
+    """开跑前确认首页能找到店铺卡片 (VPN 出口被 Keeta 认可且未被锁)。
+    首页前几屏是横幅/分类/礼包区, 店铺流在下面, 必须逐屏下滑找。
+    两轮: 第一轮逐屏下滑找 5 屏; 第二轮重启 App 后再找一轮。仍找不到才 False。"""
+    for rnd in range(2):
+        go_home(d)
+        if rnd == 1:
+            try:
+                d.app_stop(PACKAGE)
+                time.sleep(1.5)
+                d.app_start(PACKAGE)
+                time.sleep(5)
+                dismiss_popups(d)
+            except Exception:
+                pass
+        for _ in range(5):
+            guard_not_locked(d, "开跑前首页检查")
+            try:
+                if find_shop_cards(d, enrich=False):
+                    return True
+            except Exception:
+                pass
+            dismiss_popups(d, rounds=1)
+            try:
+                w, h = d.window_size()
+                d.swipe(w // 2, int(h * 0.75), w // 2, int(h * 0.35), 0.4)
+            except Exception:
+                pass
+            time.sleep(2)
+    return False
+
+
+def browse_shop(d):
+    """进店后先像真人一样逛一下: 随机慢滚 + 停留, 再回到顶部附近。"""
+    try:
+        w, h = d.window_size()
+        rsleep(2.5, 5.0)
+        for _ in range(random.randint(1, 2)):
+            d.swipe(w // 2, int(h * random.uniform(0.55, 0.7)),
+                    w // 2, int(h * random.uniform(0.3, 0.4)), 0.5)
+            rsleep(1.5, 3.5)
+        d.swipe(w // 2, int(h * 0.35), w // 2, int(h * 0.75), 0.4)
+        rsleep(1.0, 2.0)
+    except Exception:
+        pass
+
+
 def tap_text(d, *candidates, timeout=6):
     """按文本点第一个命中的元素; 找不到返回 False。绝不点 Fazer pedido。"""
     for c in candidates:
@@ -114,6 +207,36 @@ def tap_contains(d, *candidates, timeout=6):
         if el.exists(timeout=timeout):
             el.click()
             return True
+    return False
+
+
+def tap_coord(d, label, exact=True):
+    """按文本节点中心直接点, 绕开 clickable=false 的 TextView。"""
+    try:
+        for n in hierarchy_nodes(d):
+            hit = (n["text"] == label) if exact else (label.lower() in n["text"].lower())
+            if hit:
+                d.click(n["cx"], n["cy"])
+                return True
+    except Exception:
+        pass
+    return False
+
+
+def press_back(d):
+    """X3 的 adb shell input 会被 MIUI 拦截; 优先点系统导航栏 Back 节点。"""
+    for desc in ("Back", "Voltar"):
+        try:
+            el = d(description=desc)
+            if el.exists(timeout=1):
+                el.click()
+                return True
+        except Exception:
+            pass
+    try:
+        d.press("back")
+    except Exception:
+        pass
     return False
 
 
@@ -235,9 +358,14 @@ def parse_checkout(texts):
         or re.search(r"[Dd]iscount of\s*(R\$\s*[\d\.,]+)", blob)
     discount = money_to_cents(m.group(1)) if m else None
 
-    # 商品券后价: 无商品级折扣行时, 券后价=原价(页面实付即原价, 非编造)
+    # 商品券后价: 无商品级折扣行时, 由实付总额倒扣配送/服务费 (均为页面值)
     if "product_original" in r and "product_final" not in r:
-        r["product_final"] = r["product_original"]
+        if "total_final" in r:
+            derived = r["total_final"] - r.get("delivery_final", 0) - r.get("service_final", 0)
+            if derived >= 0:
+                r["product_final"] = derived
+        if "product_final" not in r:
+            r["product_final"] = r["product_original"]
 
     # 总价原价: 各原价之和 (派生, 来源均为页面显示值)
     parts = [r.get("product_original"), r.get("delivery_original"), r.get("service_original")]
@@ -253,8 +381,11 @@ def parse_checkout(texts):
         h1, m1, h2, m2 = (int(x) for x in m.groups())
         t1 = n.replace(hour=h1, minute=m1, second=0, microsecond=0)
         t2 = n.replace(hour=h2, minute=m2, second=0, microsecond=0)
-        r["ceta_min"] = max(0, int((t1 - n).total_seconds() // 60))
-        r["ceta_max"] = max(0, int((t2 - n).total_seconds() // 60))
+        d1 = (t1 - n).total_seconds()
+        d2 = (t2 - n).total_seconds()
+        if 0 <= d1 <= d2 <= 6 * 3600:
+            r["ceta_min"] = int((d1 + 59) // 60)
+            r["ceta_max"] = int((d2 + 59) // 60)
     else:
         # 另一种显示: '30-45 min'
         m = re.search(r"(\d+)\s*[-–]\s*(\d+)\s*min", blob)
@@ -278,9 +409,10 @@ def parse_shop_page(texts):
     m = re.search(r"(\d+[.,]?\d*)\s*km", blob)
     if m:
         r["distance"] = m.group(1).replace(".", ",") + " km"
-    if re.search(r"\bFechado\b|Fecha às|Abre às", blob):
+    low = [t.strip().lower() for t in texts]
+    if any(t in low for t in ("fechado", "closed")):
         r["shop_status"] = "close"
-    else:
+    elif any(t in low for t in ("aberto", "open", "open now", "aberto agora")):
         r["shop_status"] = "open"
     for t in texts:
         if t.startswith("Endereço") or ("Rua" in t and "São Paulo" in t and len(t) > 12):
@@ -322,6 +454,18 @@ def hierarchy_nodes(d):
         })
     return nodes
 
+def tap_tab(d, label):
+    """底部 tab 的 TextView 是 clickable=false; 按 bounds 中心直接点。"""
+    try:
+        w, h = d.window_size()
+        for n in hierarchy_nodes(d):
+            if n["text"] == label and n["bounds"][1] > 0.85 * h:
+                d.click(n["cx"], n["cy"])
+                return True
+    except Exception:
+        pass
+    return False
+
 def _blocked(node):
     s = (node["text"] + " " + node["desc"]).lower()
     return any(w in s for w in BLOCKED_WORDS)
@@ -338,7 +482,7 @@ def ensure_app(d):
     try:
         cur = d.app_current()
         if cur.get("package") == "com.android.systemui":
-            d.press("back")
+            press_back(d)
             time.sleep(0.8)
             cur = d.app_current()
         if cur.get("package") != PACKAGE:
@@ -390,42 +534,130 @@ def handle_cart_conflict(d):
 
 NAME_EXCLUDE = re.compile(r"R\$|min|km|%|\boff\b|free|top\b|dedicated|google maps", re.I)
 
-def find_shop_rows(d):
-    """列表/首页里的店铺行: 找 'x.x km' 距离节点, 店名取其上方最近的有效文本。"""
+# ---------- OCR (给自绘卡片补文字信息; 无引擎时优雅降级) ----------
+
+_OCR = {"engine": "unknown"}
+
+def _ocr_engine():
+    if _OCR["engine"] != "unknown":
+        return _OCR["engine"]
+    eng = "none"
+    try:
+        import ocrmac  # noqa: F401
+        eng = "vision"
+    except Exception:
+        try:
+            import pytesseract  # noqa: F401
+            import shutil
+            if shutil.which("tesseract"):
+                eng = "tesseract"
+        except Exception:
+            pass
+    _OCR["engine"] = eng
+    return eng
+
+def ocr_image_text(img):
+    eng = _ocr_engine()
+    if eng == "vision":
+        try:
+            from ocrmac import ocrmac as _vocr
+            return "\n".join(t for t, *_ in _vocr.OCR(img).recognize())
+        except Exception:
+            return ""
+    if eng == "tesseract":
+        try:
+            import pytesseract
+            return pytesseract.image_to_string(img)
+        except Exception:
+            return ""
+    return ""
+
+def _ocr_card_info(img, bounds):
+    """OCR 一张卡片的截图区域, 提取店名/距离/时长 (识别不到就留空, 不编造)。"""
+    info = {"name": "", "distance": "", "eta_min": None, "eta_max": None}
+    try:
+        l, t, r, b = bounds
+        crop = img.crop((l, t, r, b))
+        crop = crop.resize((crop.width * 2, crop.height * 2))
+        txt = ocr_image_text(crop)
+    except Exception:
+        return info
+    if not txt:
+        return info
+    m = re.search(r"(\d+(?:[.,]\d+)?)\s*km", txt)
+    if m:
+        info["distance"] = m.group(1).replace(".", ",") + " km"
+    eta = re.search(r"(\d+)\s*[-–]\s*(\d+)\s*min", txt)
+    if eta:
+        info["eta_min"], info["eta_max"] = int(eta.group(1)), int(eta.group(2))
+    for ln in txt.splitlines():
+        ln = ln.strip()
+        if len(ln) >= 4 and not NAME_EXCLUDE.search(ln) and not re.match(r"^\d", ln):
+            info["name"] = ln
+            break
+    return info
+
+def _shop_name_from_page(d):
+    """店铺页顶部读店名: 取顶部区域字号最大 (框最高) 的有效文本。"""
+    try:
+        nodes = hierarchy_nodes(d)
+        w, h = d.window_size()
+    except Exception:
+        return ""
+    skip = ("On-time Promise", "vouchers", "Delivery", "Bestsellers", "Promo items")
+    cands = []
+    for n in nodes:
+        t = n["text"]
+        if len(t) < 5 or n["bounds"][1] > 0.30 * h:
+            continue
+        if NAME_EXCLUDE.search(t) or re.match(r"^\d", t) or any(s in t for s in skip):
+            continue
+        cands.append(n)
+    if not cands:
+        return ""
+    cands.sort(key=lambda n: (-(n["bounds"][3] - n["bounds"][1]), n["bounds"][1]))
+    return cands[0]["text"]
+
+def find_shop_cards(d, enrich=True):
+    """列表/首页里的店铺卡片: 新版 Keeta 卡片是自绘渲染, 控件树里只有
+    content-desc='feed shopcard' 的空壳节点, 但坐标框是真的 -> 按框找卡、点中心进店。
+    店名/距离/时长用截图 OCR 补 (enrich=True 时); 无 OCR 引擎则留空, 店名进店后读。"""
     nodes = hierarchy_nodes(d)
     w, h = d.window_size()
+    cards, seen = [], set()
+    for n in nodes:
+        if n["desc"] != "feed shopcard":
+            continue
+        l, t, r, b = n["bounds"]
+        if (r - l) < 0.6 * w or not (0.07 * h <= (b - t) <= 0.26 * h):
+            continue
+        if t < 0.05 * h or b > 0.99 * h:
+            continue
+        if (l, t, r, b) in seen:
+            continue
+        seen.add((l, t, r, b))
+        cards.append(n)
+    cards.sort(key=lambda n: n["bounds"][1])
+    img = None
+    if enrich and _ocr_engine() != "none":
+        try:
+            img = d.screenshot()
+        except Exception:
+            img = None
     rows = []
-    seen = set()
-    dist_nodes = [n for n in nodes if re.search(r"\d+[.,]\d+\s*km", n["text"])]
-    for dn in dist_nodes:
-        dl, dt, dr, db = dn["bounds"]
-        cands = []
-        for n in nodes:
-            t = n["text"]
-            if not t or len(t) < 4 or NAME_EXCLUDE.search(t):
-                continue
-            if re.match(r"^\d[.,]\d", t):  # 评分行 '4.8 (500+)'
-                continue
-            nl, nt, nr, nb = n["bounds"]
-            if nb <= dt + 6 and dt - nb <= 360 and abs(nl - dl) <= 80:
-                cands.append(n)
-        if not cands:
-            continue
-        name = max(cands, key=lambda n: n["bounds"][3])
-        if name["text"] in seen:
-            continue
-        seen.add(name["text"])
-        m = re.search(r"(\d+[.,]\d+)\s*km", dn["text"])
-        eta = re.search(r"(\d+)\s*[-–]\s*(\d+)\s*min", dn["text"])
+    for n in cards:
+        l, t, r, b = n["bounds"]
+        info = {"name": "", "distance": "", "eta_min": None, "eta_max": None}
+        if img is not None:
+            info = _ocr_card_info(img, (l, t, r, b))
         rows.append({
-            "name": name["text"],
-            "x": name["cx"], "y": name["cy"],
-            "img_x": int(0.17 * w), "img_y": (name["bounds"][1] + db) // 2,
-            "distance": (m.group(1).replace(".", ",") + " km") if m else "",
-            "eta_min": int(eta.group(1)) if eta else None,
-            "eta_max": int(eta.group(2)) if eta else None,
+            "name": info["name"],
+            "x": n["cx"], "y": n["cy"],
+            "img_x": l + int(0.15 * (r - l)), "img_y": n["cy"],
+            "distance": info["distance"],
+            "eta_min": info["eta_min"], "eta_max": info["eta_max"],
+            "card_top": t,
         })
-    rows.sort(key=lambda r: r["y"])
     return rows
 
 def is_shop_page(texts):
@@ -439,35 +671,45 @@ def go_home(d):
     ensure_app(d)
     for _ in range(5):
         texts, _ = texts_of(d)
-        if find_shop_rows(d) or "Your welcome gifts" in joined(texts) or "Sort by" in joined(texts):
+        if find_shop_cards(d, enrich=False) or "Your welcome gifts" in joined(texts) or "Sort by" in joined(texts):
             return True
-        d.press("back")
+        if not tap_tab(d, "Home"):
+            press_back(d)
         time.sleep(1.2)
     return True
 
 def open_next_shop(d, tried):
-    """滚动找店铺行并点进店; 返回 row dict 或 None。"""
-    for _round in range(6):
-        ensure_app(d)
-        for row in find_shop_rows(d):
-            if row["name"] in tried:
+    """滚动找店铺卡片并点进店; 返回 row dict 或 None。"""
+    for _round in range(8):
+        go_home(d)
+        for row in find_shop_cards(d):
+            key = row["name"] or ("card@%d" % row["card_top"])
+            if key in tried:
                 continue
-            tried.add(row["name"])
-            d.click(row["x"], row["y"])
+            tried.add(key)
+            d.click(row["x"] + random.randint(-30, 30), row["y"] + random.randint(-10, 10))
             time.sleep(2.5)
             dismiss_popups(d)
             texts, _ = texts_of(d)
             if is_shop_page(texts):
+                page_name = _shop_name_from_page(d)
+                if page_name:
+                    row["name"] = page_name
+                    tried.add(page_name)
                 return row
-            if "Sort by" in joined(texts):
-                # 还在列表: 换点图片区域再试一次
+            if find_shop_cards(d, enrich=False):
+                # 还在列表 (刚才那下没点中): 换点图片区域再试一次
                 d.click(row["img_x"], row["img_y"])
                 time.sleep(2.5)
                 texts, _ = texts_of(d)
                 if is_shop_page(texts):
+                    page_name = _shop_name_from_page(d)
+                    if page_name:
+                        row["name"] = page_name
+                        tried.add(page_name)
                     return row
             else:
-                d.press("back")
+                press_back(d)
                 time.sleep(1.2)
         w, h = d.window_size()
         d.swipe(w // 2, int(h * 0.78), w // 2, int(h * 0.32), 0.4)
@@ -482,61 +724,96 @@ def _add_buttons(d):
             and (n["text"].startswith("Add") or n["text"].startswith("Adicionar")
                  or n["desc"].lower() in ("add", "adicionar", "+"))]
 
+def _required_options(nodes):
+    """只处理明确 Required / Select 1 的单选组, 返回该组第一个选项。"""
+    out = []
+    for i, n in enumerate(nodes):
+        if n["text"].strip().lower() not in ("select 1", "choose 1"):
+            continue
+        prev = [x["text"] for x in nodes[max(0, i - 2):i]]
+        if "Required" not in prev:
+            continue
+        if i + 1 >= len(nodes):
+            continue
+        opt = nodes[i + 1]
+        if opt["text"] in ("Required", "Optional", "Add to cart") or "R$" in opt["text"]:
+            continue
+        out.append(opt)
+    return out
+
 def _cart_bar_visible(texts):
     blob = joined(texts)
     return any(k in blob for k in ("View cart", "Ver sacola", "View bag", "Sacola")) \
-        or ("Cart" in blob and "R$" in blob)
+        or ("Cart" in blob and "R$" in blob) \
+        or ("Check out" in blob and "R$" in blob)
 
 def add_item_auto(d):
     """自动加一件菜: 点菜品行 -> 详情页选必选规格(每组第一项) -> 点底部 Add。"""
     for item_try in range(3):
         nodes = hierarchy_nodes(d)
         w, h = d.window_size()
-        prices = [n for n in nodes
-                  if re.fullmatch(r"R\$\s*[\d\.,]+", n["text"]) and n["bounds"][1] > 0.14 * h]
-        if not prices:
-            d.swipe(w // 2, int(h * 0.7), w // 2, int(h * 0.4), 0.4)
-            time.sleep(1.2)
-            continue
-        price = prices[item_try % len(prices)]
-        # 菜品名: 价格上方最近的有效文本
-        name = None
-        for n in nodes:
-            t = n["text"]
-            if t and len(t) >= 4 and "R$" not in t and "%" not in t:
-                if n["bounds"][3] <= price["bounds"][1] + 6 and price["bounds"][1] - n["bounds"][3] <= 220 \
-                        and abs(n["bounds"][0] - price["bounds"][0]) <= 120:
-                    if name is None or n["bounds"][3] > name["bounds"][3]:
-                        name = n
-        d.click(*( (name["cx"], name["cy"]) if name else (price["cx"], price["cy"]) ))
+        plus = [n for n in nodes if n["clickable"]
+                and 100 <= (n["bounds"][2] - n["bounds"][0]) <= 180
+                and 100 <= (n["bounds"][3] - n["bounds"][1]) <= 180
+                and 0.45 * h < n["bounds"][1] < 0.8 * h]
+        if plus:
+            click_node(d, plus[item_try % len(plus)])
+        else:
+            prices = [n for n in nodes
+                      if re.fullmatch(r"R\$\s*[\d\.,]+", n["text"]) and n["bounds"][1] > 0.14 * h]
+            if not prices:
+                d.swipe(w // 2, int(h * 0.7), w // 2, int(h * 0.4), 0.4)
+                time.sleep(1.2)
+                continue
+            price = prices[item_try % len(prices)]
+            # 菜品名: 价格上方最近的有效文本
+            name = None
+            for n in nodes:
+                t = n["text"]
+                if t and len(t) >= 4 and "R$" not in t and "%" not in t:
+                    if n["bounds"][3] <= price["bounds"][1] + 6 and price["bounds"][1] - n["bounds"][3] <= 220 \
+                            and abs(n["bounds"][0] - price["bounds"][0]) <= 120:
+                        if name is None or n["bounds"][3] > name["bounds"][3]:
+                            name = n
+            d.click(*((name["cx"], name["cy"]) if name else (price["cx"], price["cy"])))
         time.sleep(2)
         handle_cart_conflict(d)
         texts, _ = texts_of(d)
-        if _cart_bar_visible(texts):
+        blob = joined(texts)
+        if _cart_bar_visible(texts) and "Required" not in blob and "Add to cart" not in blob:
             return True
         # 详情页: 处理必选规格后点底部 Add
+        picked = set()
         for _ in range(8):
             texts, _ = texts_of(d)
-            if _cart_bar_visible(texts):
+            blob = joined(texts)
+            if _cart_bar_visible(texts) and "Required" not in blob and "Add to cart" not in blob:
                 return True
-            opts = [n for n in hierarchy_nodes(d)
+            nodes_now = hierarchy_nodes(d)
+            req = [o for o in _required_options(nodes_now) if o["text"] not in picked]
+            opts = req or [n for n in nodes_now
                     if n["clickable"] and n["checkable"] and not n["checked"] and not _blocked(n)]
             if opts:
-                click_node(d, sorted(opts, key=lambda n: (n["bounds"][1], n["bounds"][0]))[0])
+                choice = sorted(opts, key=lambda n: (n["bounds"][1], n["bounds"][0]))[0]
+                picked.add(choice["text"])
+                click_node(d, choice)
                 time.sleep(0.8)
                 continue
             btns = _add_buttons(d)
             if btns:
                 click_node(d, max(btns, key=lambda n: n["cy"]))
-                time.sleep(1.8)
-                handle_cart_conflict(d)
-                texts, _ = texts_of(d)
-                if _cart_bar_visible(texts) or not _add_buttons(d):
-                    return True
-            w2, h2 = d.window_size()
-            d.swipe(w2 // 2, int(h2 * 0.7), w2 // 2, int(h2 * 0.45), 0.3)
-            time.sleep(0.8)
-        d.press("back")
+            elif not (tap_coord(d, "Add to cart") or tap_coord(d, "Adicionar")):
+                w2, h2 = d.window_size()
+                d.swipe(w2 // 2, int(h2 * 0.7), w2 // 2, int(h2 * 0.45), 0.3)
+                time.sleep(0.8)
+                continue
+            time.sleep(1.8)
+            handle_cart_conflict(d)
+            texts, _ = texts_of(d)
+            blob = joined(texts)
+            if _cart_bar_visible(texts) and "Required" not in blob and "Add to cart" not in blob:
+                return True
+        press_back(d)
         time.sleep(1.2)
     return False
 
@@ -558,15 +835,9 @@ def get_account_info(d):
     """Account/Perfil 页读邮箱; Orders/Pedidos 页数完单数。读不到留空, 不编造。"""
     info = {}
     ensure_app(d)
-    if not (tap_text(d, "Account", timeout=3) or tap_text(d, "Perfil", timeout=2)):
+    if not (tap_tab(d, "Account") or tap_text(d, "Account", timeout=3) or tap_text(d, "Perfil", timeout=2)):
         tap_contains(d, "Account", timeout=2)
     time.sleep(2)
-    texts, _ = texts_of(d)
-    save_debug(d, "perfil")
-    for t in texts:
-        if "@" in t and "." in t:
-            info["account_id"] = t
-            break
     if tap_text(d, "Orders", timeout=3) or tap_contains(d, "Pedidos", timeout=2) \
             or tap_contains(d, "Meus pedidos", timeout=2):
         time.sleep(2)
@@ -579,15 +850,62 @@ def get_account_info(d):
             done = len(re.findall(r"Delivered|Entregue|Concluído|Concluido", blob))
             if done:
                 info["user_completed_orders_count"] = done
-    tap_text(d, "Home", timeout=2) or tap_text(d, "Início", timeout=2) or d.press("back")
+    tap_tab(d, "Home") or tap_text(d, "Home", timeout=2) or tap_text(d, "Início", timeout=2) or press_back(d)
     time.sleep(1)
     return info
+
+def handle_address_modal(d):
+    """结算页 Address incomplete 弹窗: 关闭, 必要时选回已保存的完整地址。"""
+    texts, _ = texts_of(d)
+    if "Address incomplete" not in joined(texts):
+        return False
+    w, h = d.window_size()
+    for n in hierarchy_nodes(d):
+        l, t, r, b = n["bounds"]
+        if n["clickable"] and l > 0.75 * w and 0.25 * h < t < 0.35 * h:
+            d.click(n["cx"], n["cy"])
+            time.sleep(1.2)
+            break
+    texts, _ = texts_of(d)
+    if "Address incomplete" not in joined(texts):
+        return True
+    if tap_coord(d, "View other addresses"):
+        time.sleep(1.5)
+        texts, _ = texts_of(d)
+        for t in texts:
+            if "Rua Jandaia" in t and "7550" in t:
+                tap_coord(d, t)
+                time.sleep(2)
+                break
+        for label in ("Confirm", "Confirmar", "Use this address", "Usar este endereço", "Done", "Concluir"):
+            if tap_coord(d, label):
+                time.sleep(1.5)
+                break
+    return "Address incomplete" not in joined(texts_of(d)[0])
+
+
+def ensure_checkout_address(d):
+    """Checkout 仍要求选地址时, 选回已保存的 Rua Jandaia。"""
+    texts, _ = texts_of(d)
+    if not any(t.strip() == "Select a delivery address" for t in texts):
+        return False
+    tap_coord(d, "Select a delivery address")
+    time.sleep(1.5)
+    texts, _ = texts_of(d)
+    for t in texts:
+        if "Rua Jandaia" in t and "7550" in t:
+            tap_coord(d, t)
+            time.sleep(2)
+            return True
+    return False
+
 
 # ---------- 单店 ----------
 
 def scrape_one_shop_auto(d, idx, tried, attempt_no):
     print("\n=== 尝试 #%d: 目标第 %d 家 ===" % (attempt_no, idx))
     ensure_app(d)
+    guard_not_locked(d, "尝试开始前")
     row_meta = open_next_shop(d, tried)
     if row_meta is None:
         save_debug(d, "no_shop_open")
@@ -596,14 +914,16 @@ def scrape_one_shop_auto(d, idx, tried, attempt_no):
     time.sleep(1)
     texts, _ = texts_of(d)
     save_debug(d, "shop_auto_page")
+    guard_not_locked(d, "进店后")
     row = parse_shop_page(texts)
     row["shop_name"] = row_meta["name"]
     if row_meta.get("distance"):
         row["distance"] = row_meta["distance"]
     if row.get("shop_status") == "close":
         print("这家已打烊, 跳过。")
-        d.press("back")
+        press_back(d)
         return None
+    browse_shop(d)
 
     if not add_item_auto(d):
         save_debug(d, "add_fail")
@@ -624,7 +944,7 @@ def scrape_one_shop_auto(d, idx, tried, attempt_no):
             and ("Resumo" not in blob and "Order summary" not in blob)
         if short and re.search(r"R\$\s*[\d\.,]+\s*(more|faltando)|Faltam|Add .* more", blob):
             print("未达起送价, 再加一件...")
-            d.press("back")
+            press_back(d)
             time.sleep(1.2)
             if not add_item_auto(d):
                 break
@@ -635,17 +955,31 @@ def scrape_one_shop_auto(d, idx, tried, attempt_no):
     texts, _ = texts_of(d)
     arrived = any(k in joined(texts) for k in ("Order summary", "Resumo do pedido"))
     if not arrived:
-        tap_text(d, "Checkout", timeout=4) or tap_text(d, "Pedir agora", timeout=3) \
+        tap_text(d, "Checkout", timeout=4) or tap_text(d, "Check out", timeout=2) \
+            or tap_coord(d, "Check out") or tap_text(d, "Pedir agora", timeout=3) \
             or tap_contains(d, "Review order", timeout=2)
         time.sleep(2)
+    handle_address_modal(d)
+    ensure_checkout_address(d)
     texts, _ = texts_of(d)
     save_debug(d, "checkout_auto")
+    guard_not_locked(d, "提单页")
     if not any(k in joined(texts) for k in ("Order summary", "Resumo do pedido", "Subtotal")):
         print("!! 没到提单页, 本家跳过 (debug 已存 checkout_auto, 发我看)")
         clear_cart(d)
         go_home(d)
         return None
-    data = parse_checkout(texts)
+    all_texts = list(texts)
+    w2, h2 = d.window_size()
+    for _ in range(4):
+        if any(k in t for t in all_texts for k in ("Service fee", "Taxa de serviço", "Taxa de servico")):
+            break
+        d.swipe(w2 // 2, int(h2 * 0.78), w2 // 2, int(h2 * 0.35), 0.4)
+        time.sleep(0.8)
+        more, _ = texts_of(d)
+        all_texts = list(dict.fromkeys(all_texts + more))
+    save_debug(d, "checkout_fees")
+    data = parse_checkout(all_texts)
     # ceta 兜底: 提单页没读到时用列表页的 min 范围 (页面真实显示)
     if "ceta_min" not in data and row_meta.get("eta_min") is not None:
         data["ceta_min"] = row_meta["eta_min"]
@@ -658,44 +992,77 @@ def scrape_one_shop_auto(d, idx, tried, attempt_no):
 
 
 def main():
-    n_shops = int(sys.argv[1]) if len(sys.argv) > 1 else 3
+    args = [a for a in sys.argv[1:] if not a.startswith("--")]
+    n_shops = int(args[0]) if args else 3
+    anytime = "--anytime" in sys.argv
+    if n_shops > SESSION_CAP:
+        print("单轮上限 %d 家 (防风控), 目标已从 %d 调到 %d" % (SESSION_CAP, n_shops, SESSION_CAP))
+        n_shops = SESSION_CAP
+    sp = now_sp()
+    if not anytime and not (SP_OPEN_H <= sp.hour < SP_CLOSE_H):
+        print("现在圣保罗时间 %s, 不在采集窗口 11:00-22:59 内, 拒绝运行 (防风控)。确需运行加 --anytime"
+              % sp.strftime("%H:%M"))
+        return
+    print("圣保罗时间 %s, 本轮目标 %d 家, 每家间随机休息 %d-%d 秒"
+          % (sp.strftime("%H:%M"), n_shops, REST_BETWEEN[0], REST_BETWEEN[1]))
     os.makedirs(OUT_DIR, exist_ok=True)
     d = u2.connect()
     print("已连接设备: %s" % d.info.get("productName", "?"))
+    print("OCR 引擎: %s" % {"vision": "macOS Vision (ocrmac)",
+                            "tesseract": "Tesseract",
+                            "none": "无 (卡片距离/时长留空, 其余照常; 装 ocrmac 可补齐)"}[_ocr_engine()])
     d.app_start(PACKAGE)
     time.sleep(5)
     dismiss_popups(d)
     save_debug(d, "home")
 
-    acct = get_account_info(d)
-    cnt = acct.get("user_completed_orders_count")
-    if cnt is not None:
-        acct["account_type"] = 0 if cnt == 0 else (1 if cnt <= 4 else 2)
-    acct["is_member"] = 0  # BRD 注明 Keeta 目前无会员体系
-
     rows = []
-    tried = set()
-    attempts = 0
-    while len(rows) < n_shops and attempts < n_shops + 6:
-        attempts += 1
-        row = scrape_one_shop_auto(d, len(rows) + 1, tried, attempts)
-        if not row:
-            continue
-        base = {
-            "batch_no": now_sp().strftime("%Y%m%d"),
-            "country": "BR",
-            "platform": "Keeta",
-            "city_name": row.get("city_name", "São Paulo"),
-            "crawl_time": now_sp().strftime("%Y-%m-%d %H:%M:%S"),
-        }
-        base.update(acct)
-        base.update(row)
-        rows.append({f: base.get(f, "") for f in FIELDS})
-        filled = sum(1 for v in rows[-1].values() if v != "")
-        print("第 %d 家完成, 已填 %d/30 字段" % (len(rows), filled))
+    locked = False
+    try:
+        guard_not_locked(d, "启动后首页")
+        if not preflight_home_loaded(d):
+            print("⛔ 首页没有加载出店铺列表, 已停止 (未消耗任何尝试)。")
+            print("   可能原因: VPN 出口未被 Keeta 认可 / 仍在风控冷却 / 网络异常。")
+            print("   先手动打开 Keeta 确认首页能刷出店铺, 再跑脚本。")
+            save_debug(d, "preflight_fail")
+            return
+        acct = get_account_info(d)
+        cnt = acct.get("user_completed_orders_count")
+        if cnt is not None:
+            acct["account_type"] = 0 if cnt == 0 else (1 if cnt <= 4 else 2)
+        acct["is_member"] = 0  # BRD 注明 Keeta 目前无会员体系
+
+        tried = set()
+        attempts = 0
+        while len(rows) < n_shops and attempts < n_shops + 6:
+            attempts += 1
+            row = scrape_one_shop_auto(d, len(rows) + 1, tried, attempts)
+            if not row:
+                continue
+            base = {
+                "batch_no": now_sp().strftime("%Y%m%d"),
+                "country": "BR",
+                "platform": "Keeta",
+                "city_name": row.get("city_name", ""),
+                "crawl_time": now_sp().isoformat(timespec="seconds"),
+            }
+            base.update(acct)
+            base.update(row)
+            rows.append({f: base.get(f, "") for f in FIELDS})
+            filled = sum(1 for v in rows[-1].values() if v != "")
+            print("第 %d 家完成, 已填 %d/30 字段" % (len(rows), filled))
+            if len(rows) < n_shops:
+                rest = random.uniform(*REST_BETWEEN)
+                print("休息 %.0f 秒再下一家 (防风控节奏)..." % rest)
+                time.sleep(rest)
+    except LockedError as e:
+        locked = True
+        print("\n⛔ 检测到 Keeta 可能被风控锁定: %s" % e)
+        print("已按你的要求立即停止整轮运行, 不重试不硬闯 (避免延长锁定)。debug 里有 locked 截图。")
 
     if not rows:
-        print("\n一家都没抓到, 把 output/debug 里的截图和 XML 发我, 我照真实结构改选择器。")
+        if not locked:
+            print("\n一家都没抓到, 把 output/debug 里的截图和 XML 发我, 我照真实结构改选择器。")
         return
     fn = os.path.join(OUT_DIR, "keeta_%s.csv" % now_sp().strftime("%Y%m%d_%H%M%S"))
     with open(fn, "w", newline="", encoding="utf-8-sig") as f:
@@ -703,6 +1070,8 @@ def main():
         w.writeheader()
         w.writerows(rows)
     print("\n完成: %d 行 -> %s" % (len(rows), fn))
+    if locked:
+        print("注: 本轮因锁定提前结束, 以上是锁定前已采集到的数据。")
     print("把这个 CSV 发回给我, 我核对字段和金额。")
 
 

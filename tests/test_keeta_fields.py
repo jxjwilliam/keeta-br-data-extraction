@@ -6,6 +6,34 @@ ROOT=Path(__file__).resolve().parents[1]
 spec=importlib.util.spec_from_file_location('keeta',ROOT/'scripts/keeta_scripe-v4.py')
 k=importlib.util.module_from_spec(spec);spec.loader.exec_module(k)
 class FieldTests(unittest.TestCase):
+    def test_split_checkout_items_and_price_change(self):
+        with tempfile.TemporaryDirectory() as t:
+            p=Path(t)
+            for source in (ROOT/'tests/fixtures/checkout-address-tooltip').glob('checkout-*'):
+                if source.suffix in ['.xml','.json']:shutil.copy(source,p/source.name)
+            tree=ET.parse(p/'checkout-top.xml')
+            for n in tree.iter('node'):
+                if n.get('text')=='Total R$43.26':n.set('text','Total R$81.54')
+            tree.write(p/'checkout-top.xml')
+            tree=ET.parse(p/'checkout-fees.xml');root=tree.getroot()
+            for n in root.iter('node'):
+                if n.get('text')=='R$63.80' and n.get('bounds')=='[999,1366][1157,1426]':n.set('text','R$127.60')
+                if n.get('text')=='R$43.26':n.set('text','R$81.54')
+                if n.get('text')=='R$35.52 off applied':n.set('text','R$61.04 off applied')
+            for text,bounds in [('1 × Fixture second item','[36,700][917,820]'),('R$38.28','[1001,700][1157,760]'),('R$63.80','[1016,760][1157,820]')]:
+                ET.SubElement(root,'node',package=k.PACKAGE,text=text,bounds=bounds)
+            tree.write(p/'checkout-fees.xml');k.parse(p)
+            result=json.loads((p/'evidence.json').read_text())
+            self.assertEqual(result['record']['product_original'],12760)
+            self.assertEqual(result['conditions']['quantity'],2)
+            for n in root.iter('node'):
+                if n.get('text')=='R$38.28' and n.get('bounds')=='[1001,700][1157,760]':n.set('text','R$38.29')
+            tree.write(p/'checkout-fees.xml')
+            with self.assertRaises(AssertionError):k.parse(p)
+    def test_total_footer_fallback_is_unambiguous(self):
+        self.assertEqual(k.checkout_total([{'text':'Total R$63.81'}]),[6381])
+        with self.assertRaises(ValueError):k.checkout_total([])
+        with self.assertRaises(ValueError):k.checkout_total([{'text':'Total R$63.81'},{'text':'Total R$63.81'}])
     def test_timestamp_publication_never_overwrites(self):
         with tempfile.TemporaryDirectory() as t:
             run=Path(t)/'run';run.mkdir();final=Path(t)/'final'
@@ -52,6 +80,26 @@ class FieldTests(unittest.TestCase):
             ET.SubElement(root,'node',package=k.PACKAGE,text='Closes at 22:30',bounds='[0,0][100,100]')
             ET.ElementTree(root).write(p/'shop-info.xml')
             self.assertNotIn('shop_status',k.context_fields(p))
+    def test_single_delivery_price_reconciles(self):
+        with tempfile.TemporaryDirectory() as t:
+            p=Path(t)
+            for source in (ROOT/'tests/fixtures/checkout-address-tooltip').glob('checkout-*'):
+                if source.suffix in ['.xml','.json']:shutil.copy(source,p/source.name)
+            tree=ET.parse(p/'checkout-top.xml')
+            for n in tree.iter('node'):
+                if n.get('text')=='Total R$43.26':n.set('text','Total R$53.26')
+            tree.write(p/'checkout-top.xml')
+            tree=ET.parse(p/'checkout-fees.xml')
+            for parent in tree.iter():
+                for n in list(parent):
+                    if n.get('text')=='R$3.99':parent.remove(n)
+            for n in tree.iter('node'):
+                if n.get('text')=='R$43.26':n.set('text','R$53.26')
+                if n.get('text')=='R$35.52 off applied':n.set('text','R$25.52 off applied')
+            tree.write(p/'checkout-fees.xml');k.parse(p)
+            row=json.loads((p/'evidence.json').read_text())['record']
+            self.assertEqual(row['delivery_original'],1399)
+            self.assertEqual(row['delivery_final'],1399)
     def test_free_delivery_is_zero_not_missing(self):
         with tempfile.TemporaryDirectory() as t:
             p=Path(t)
@@ -81,7 +129,7 @@ class FieldTests(unittest.TestCase):
             tree.write(p/'checkout-top.xml')
             tree=ET.parse(p/'checkout-fees.xml')
             for n in tree.iter('node'):
-                if n.get('text')=='R$63.80':n.set('text','R$127.60')
+                if n.get('text')=='R$63.80' and n.get('bounds')=='[999,1366][1157,1426]':n.set('text','R$127.60')
                 if n.get('text')=='R$43.26':n.set('text','R$81.54')
                 if n.get('text')=='R$35.52 off applied':n.set('text','R$61.04 off applied')
             tree.write(p/'checkout-fees.xml');k.parse(p)

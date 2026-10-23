@@ -1,10 +1,8 @@
 #!/usr/bin/env python3
-"""Keeta 单条 PoC：当前店铺加购简单商品，或读取当前 Checkout。
-依赖：python3、uiautomator2、Pillow、系统 adb。
-python3 scripts/keeta_scripe-v4.py --serial 979f0245 --item '商品完整名称'
-python3 scripts/keeta_scripe-v4.py --serial 979f0245
-python3 scripts/keeta_scripe-v4.py --parse-dir outputs/internal/runs/keeta-rerun-20261022
-不选择必选规格、不自动应用券、不提交订单。完整首页导航仍未验收。
+"""Keeta字段模块及单条诊断CLI；连续运行入口是keeta_stream.py。
+依赖和命令见README.md、docs/resources.md及docs/keeta-continuous-guide.md。
+直接调用parse-dir只读本地证据；本模块单条加购不处理必选规格。
+不应用券、不支付、不提交订单。保留v4文件名以兼容调用方。
 """
 import argparse,csv,json,re,time,math,os,shutil,subprocess,tempfile
 from pathlib import Path
@@ -54,6 +52,12 @@ def row_money(ns,label):
     n=labels[0];y=(n['b'][1]+n['b'][3])/2
     vals=[x for x in ns if x['b'][0]>n['b'][2] and abs((x['b'][1]+x['b'][3])/2-y)<25 and re.fullmatch(r'R\$\s*[\d.,]+',x['text'])]
     return [money(x['text']) for x in sorted(vals,key=lambda x:x['b'][0])]
+
+def checkout_total(ns):
+    if any(n['text']=='Total' for n in ns):return row_money(ns,'Total')
+    footer=[n['text'][6:] for n in ns if re.fullmatch(r'Total R\$\s*[\d.,]+',n['text'])]
+    if len(footer)!=1:raise ValueError('结算总额缺失或重复')
+    return [money(footer[0])]
 
 def eta_minutes(raw, captured_at):
     """同页时刻减捕获时间，向上取整；不把过期窗口截成 0。"""
@@ -124,24 +128,35 @@ def parse(out, context=None):
         if 'São Paulo' in address[0]['text']:row['city_name']='São Paulo'
     summary=next(i for i,n in enumerate(top) if n['text']=='Order summary')
     row['shop_name']=top[summary+1]['text']
-    items=[n for n in top if re.match(r'^\d+\s*[×x]\s+',n['text'])]
-    if not items:raise ValueError('未读取到结算商品')
+    # 同一结算的两个视图可能各自只显示部分商品；按完整商品行合并。
+    items=[];item_values={}
+    for page in (top,fees):
+        seen=set()
+        for item in [n for n in page if re.match(r'^\d+\s*[×x]\s+',n['text'])]:
+            label=item['text']
+            if label in seen:raise ValueError('同页重名商品行存在歧义，停止导出')
+            seen.add(label)
+            amounts=[n for n in page if n['b'][0]>item['b'][2] and item['b'][1]-5<=n['b'][1]<=item['b'][3] and re.fullmatch(r'R\$\s*[\d.,]+',n['text'])]
+            amounts.sort(key=lambda n:n['b'][1])
+            if len(amounts)!=2:continue  # 边缘截断行必须在另一个视图完整读到。
+            values=tuple(money(n['text']) for n in amounts)
+            if label in item_values:
+                if item_values[label]!=values:raise ValueError('跨页商品价格变化，停止导出')
+                continue
+            items.append(item);item_values[label]=values
+    if not items:raise ValueError('未读取到完整结算商品')
+    visible_labels={n['text'] for page in (top,fees) for n in page if re.match(r'^\d+\s*[×x]\s+',n['text'])}
+    if visible_labels!=set(item_values):raise ValueError('商品跨页未完整显示')
     row['product_info']='; '.join(item['text'] for item in items)
-    original=final=0
-    for item in items:
-        amounts=[n for n in top if n['b'][0]>item['b'][2] and item['b'][1]-5<=n['b'][1]<=item['b'][3] and re.fullmatch(r'R\$\s*[\d.,]+',n['text'])]
-        amounts.sort(key=lambda n:n['b'][1])
-        if len(amounts)!=2:raise ValueError('商品原价/折后价未分别读到，或商品跨页未完整显示')
-        item_final,item_original=[money(n['text']) for n in amounts]
-        final+=item_final;original+=item_original
+    final=sum(v[0] for v in item_values.values());original=sum(v[1] for v in item_values.values())
     row['product_final']=final;row['product_original']=original
-    subtotal=row_money(fees,'Subtotal');delivery=row_money(fees,'Delivery fee');service=row_money(fees,'Service fee');total=row_money(fees,'Total')
+    subtotal=row_money(fees,'Subtotal');delivery=row_money(fees,'Delivery fee');service=row_money(fees,'Service fee');total=checkout_total(fees)
     delivery_label=next(n for n in fees if n['text']=='Delivery fee')
     delivery_y=(delivery_label['b'][1]+delivery_label['b'][3])/2
     free_delivery=any(n['text'].lower() in ('free','grátis','gratis') and n['b'][0]>delivery_label['b'][2] and abs((n['b'][1]+n['b'][3])/2-delivery_y)<25 for n in fees)
-    if len(service)!=1 or len(total)!=1 or not (len(delivery)==2 or (len(delivery)==1 and free_delivery)):
+    if len(service)!=1 or len(total)!=1 or len(delivery) not in (1,2):
         raise ValueError('费用结构变化，停止导出')
-    row.update(delivery_original=delivery[0],delivery_final=0 if free_delivery else delivery[1],service_original=service[0],service_final=service[0],total_final=total[0])
+    row.update(delivery_original=delivery[0],delivery_final=0 if free_delivery else delivery[-1],service_original=service[0],service_final=service[0],total_final=total[0])
     row['total_original']=row['product_original']+row['delivery_original']+row['service_original']
     assert subtotal==[row['product_original']], '商品原价与 Subtotal 不符'
     assert row['product_final']+row['delivery_final']+row['service_final']==row['total_final'],'费用不平'
@@ -170,6 +185,9 @@ def parse(out, context=None):
     for f in ['batch_no','country','platform']:notes[f]='采集日期或用户确认的巴西 Keeta 上下文'
     notes['crawl_time']='顶部 XML 捕获开始时间，America/Sao_Paulo'
     notes['city_name']='当前结算地址'
+    if len(delivery)==1 and not free_delivery:
+        notes['delivery_original']='配送费行单一可见价；无单独配送优惠展示，按商品优惠及总已用优惠核算一致'
+        notes['delivery_final']='配送费行单一可见价'
     notes['total_original']='商品原价 + 配送原价 + 服务费（计算值）'
     notes['service_original']='项目口径：单一可见服务费同时填原价与现价'
     for f in ['ceta_min','ceta_max']:notes[f]='送达时刻减同页捕获时间，向上取整分钟；跨日仅接受午夜附近且 6 小时内，否则留空'
@@ -247,7 +265,7 @@ def export_bundle(run, output_root=None):
 
 
 def main():
-    p=argparse.ArgumentParser();p.add_argument('--serial',default='979f0245');p.add_argument('--item');p.add_argument('--parse-dir',type=Path);p.add_argument('--export-run',type=Path);p.add_argument('--context-dir',type=Path);p.add_argument('--inspect-context-dir',type=Path);a=p.parse_args()
+    p=argparse.ArgumentParser();p.add_argument('--serial',default='f753a0f3');p.add_argument('--item');p.add_argument('--parse-dir',type=Path);p.add_argument('--export-run',type=Path);p.add_argument('--context-dir',type=Path);p.add_argument('--inspect-context-dir',type=Path);a=p.parse_args()
     if a.export_run:export_bundle(a.export_run);return
     if a.inspect_context_dir:
         facts=context_fields(a.inspect_context_dir)

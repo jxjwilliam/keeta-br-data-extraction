@@ -1,15 +1,79 @@
-## 结果入口
+# Keeta BR 数据采集
 
-只需查看 `outputs/final/`：新版有效结果按采集时间戳命名为 `latest_YYYYMMDD_HHMMSS.xlsx` 和 `latest_YYYYMMDD_HHMMSS.csv`，迁移前的旧样例在 `history/`；新结果逐轮保存在 final 根目录。截图、XML、JSON、日志和草稿均归入 `outputs/internal/`。当前旧样例标记 `needs-review`；完整新版实机验收前不生成正式时间戳结果。
+通过已登录的 Android Keeta App 读取店铺及结算报价，逐条保存 CSV/XLSX。当前为实机试运行，尚未验证 15,000 条/次的生产能力。无法取得的字段留空，完整、部分及失败尝试均留存。
 
-执行、输出结构与依赖见 [重跑说明](docs/keeta-rerun-guide.md)。
+## 安装与运行
 
-## Info
+Python 3.12 实测；USB 手机需已解锁、允许调试，并登录 Keeta。依赖和 XLSX 运行时要求见 [运行资源](docs/resources.md)。
 
-- BRD 里那套：巴西本地账号、SP+Santos 每城 500 店、5 个距离段、按小时批次
-- 对抓取最关键的一点：消费者报价目前只在 App 中实测取得；官方存在需商家授权的 API，尚未核验全市场消费者实时报价接口。见 [访问异常与规模化调查](docs/oc-keeta-access-and-scale-research.md)。
-- 商家门户在 merchant.keeta-global.com。
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+python3 -m pip install -r requirements.txt
+adb devices
+```
 
+在项目根目录执行。**恢复当前 X3 会话：**
+
+```bash
+python3 scripts/keeta_stream.py \
+  --serial f753a0f3 \
+  --interval 180 \
+  --max-attempts 20 \
+  --resume outputs/internal/streams/continuous_20261023_174448
+```
+
+**新建会话：**
+
+```bash
+python3 scripts/keeta_stream.py \
+  --serial f753a0f3 \
+  --interval 180 \
+  --max-attempts 20
+```
+
+- 当前 X3 为 `f753a0f3`；以 `adb devices` 实际结果为准。换手机/账号用新会话。
+- 店间至少 180 秒；20 是尝试上限，异常和导航预算可能使其提前结束。未指定参数时默认最多3次。
+- Ctrl+C 停止，已写记录保留；同一手机/会话只运行一个采集进程。
+- 默认选择用户已指定的 Rua Jandaia, 7550, São Paulo, SP 保存地址。保留当前账号和优惠设置，不提交订单或支付。
+- 访问限制/验证时暂停；只有人工确认恢复后才额外使用 `--access-restored`。VPN 不能保证避免限制。
+
+## 结果
+
+只查看 `outputs/final/`：每会话一组 `continuous_YYYYMMDD_HHMMSS.csv/xlsx`，按圣保罗启动时间命名，同会话逐条更新；历史结果不覆盖。
+
+当前 X3：[CSV](outputs/final/continuous_20261023_174448.csv) · [Excel](outputs/final/continuous_20261023_174448.xlsx)。X6 的独立8条历史会话仍保留在 final；更早截图转录样例在 `history/`。
+
+前30列为业务字段，另附 `attempt_id`、`collection_status`、`filled_fields`、`error_reason`、`amounts_validated`。
+
+- `complete`：地址及金额校验通过，**不表示30字段满值**。当前完整记录通常为22/30。
+- `partial` / `failed`：保留能核实的字段及失败原因，不补零、不伪装关店。
+- `navigation`：误入非店铺页面的事件，不计入店铺成功率分母。
+
+Excel 的“成功率”页提供完整/部分/失败数量及字段覆盖率。内部 SQLite、XML/截图、来源与日志统一在 `outputs/internal/`。历史探针和旧生成文件已归档，见 [清理记录](docs/cleanup-notes.md)。
+
+## 脚本与文档
+
+| 入口 | 用途 |
+| --- | --- |
+| [keeta_stream.py](scripts/keeta_stream.py) | 当前主程序：导航/恢复、每次尝试、账本及CSV |
+| [keeta_scripe-v4.py](scripts/keeta_scripe-v4.py) | 主程序复用的页面捕获、字段解析及金额校验；保留现有文件名以兼容调用 |
+| [export_keeta_stream.mjs](scripts/export_keeta_stream.mjs) | 连续会话Excel及成功率工作表 |
+| [export_keeta.mjs](scripts/export_keeta.mjs) | 单条诊断导出，由v4辅助命令使用 |
+| [运行与恢复指南](docs/keeta-continuous-guide.md) | 参数、成功率口径、证据及异常恢复 |
+| [设备排错](docs/keeta-debug-guide.md) | ADB、scrcpy、锁屏与连接问题 |
+| [研究/规划索引](docs/README.md) | 保留的调查证据和业务待确认项 |
+| [TODO](TODO.md) / [项目需求](project.md) | 当前进度与交付范围 |
+
+`scripts/muse_keeta_scrape.py` 是独立实验方案，未作为当前运行入口；未合并其行为到主程序。旧v1–v3、capture和test1探针已退出活动目录。
+
+## 校验
+
+```bash
+python3 -m unittest discover -s tests -v
+```
+
+离线测试不连接手机，覆盖金额与跨页一致性、ETA、缺失值/0、快照恢复、完整/部分尝试、页面恢复和禁止下单。实际长期吞吐量和防限流效果仍待验证。
 
 ## 采集字段
 
@@ -48,42 +112,4 @@
 | 29 | distance | 配送距离 | 配送距离 |
 | 30 | shop_status | 店铺状态 | 店铺状态，枚举值：open/close 等 |
 
-口径说明（需求表之外的实现约束，来自参考图核对）：
-
-- 金额字段一律只保留数字、单位为分，币种 BRL 不做汇率换算（R$ 45.00 = 4500 分）。
-- `ceta_min` / `ceta_max` 在需求表写作「最小/最大配送时长」，但结算页给的是预计送达时刻区间（Previsão 07:12–07:27）。要得到分钟数，需同时记录 `crawl_time`、采集日期与当地时区后再换算，不能把时刻当时长。
-- 结算页不展示的字段不要补造：`account_id`、`user_completed_orders_count`、`account_type`、`is_member`、`crawl_lat/lng`、`shop_lat/lng`、`shop_address`、`distance` 需登录账号或从店铺页/地理编码补齐。
-- `shop_status` 为 open/close 枚举；需求表要求无论是否采集到信息都反馈一条记录，此时店铺状态置 close、其余字段置空。
-- 样例数据与红框原文对照见 `assets/keeta-br-结算页字段样例.xlsx`（5 个工作表）与 `docs/ac-br-抓取小结.md`。
-
-## 当前状态
-
-- USB 连接、投屏和实时截图已验证。
-- uiautomator2 可读取结算页 XML；标准 adb dump 会遇到 idle 错误。
-- 已导出一条实时记录：30 列，16 项有值，14 项未取得留空。计算值和默认上下文已标注来源。
-- POCO X6 已验证自动点击和滑动；旧 X3 的 MIUI 输入限制见历史记录。完整跨页与批量采集尚未验收。
-
-## 文件入口
-
-- [需求与 30 字段定义](project.md)
-- [进度、阻塞项与下一步](TODO.md)
-- [设备与采集操作说明](docs/keeta-debug-guide.md)
-- [巴西市场调研](docs/keeta-brazil-research.md)
-- [网页入口调研](docs/oc-scrape-findings.md)
-- [历史截图样例与金额核对](docs/ac-br-抓取小结.md)
-- [界面文案中文对照](docs/keeta-checkout-fields-cn.md)
-- [实时 Excel](outputs/final/history/20261021-16fields-needs-review.xlsx)
-- [实时费用截图](outputs/internal/runs/keeta-live-20261021/fees.png)
-- [实时读取证据](outputs/internal/runs/keeta-live-20261021/evidence.json)
-
-`assets/` 保留原始参考图、字段样例工作簿及历史设备证据。`weixin-1.png` 与 `weixin-2.png` 内容相同，按原始材料保留。旧 `p3.xml` 是购物车抽屉，不能视为结算页 XML。
-
-当前维护单条 PoC `scripts/keeta_scripe-v4.py`、XLSX 导出器 `scripts/export_keeta.mjs` 和离线测试；尚无生产批量采集程序。执行 `python3 -m unittest discover -s tests -v` 可验证字段规则与输出保护。旧 v1–v3 仅作历史参考，使用当前重跑说明中的命令。
-
-
-##
-
-1. 这批样本数据包含不同地址、商家、点餐内容、账号等维度；需求总量是 15000 条数据，先梳理清楚这个量级意味着什么。
-2. 当前单组信息分散在 30 个不同页面：如果做自动抓取，代码该怎么跨页面提取信息，并把分散的数据合并组装成单条完整记录。
-3. 对照目标需求，梳理当前实现还存在哪些问题、卡点与障碍，评估距离交付目标还有多大差距。
-
+口径：金额为BRL整数分；ETA为同页送达时刻减采集时间后向上取整分钟，保留原始时间窗；账号0单→0、1–4单→1、≥5单→2；只将明确Open/Closed映射营业状态。失败不等于close。可见未使用券不参与金额核算，未知ID/坐标/会员等不推测。

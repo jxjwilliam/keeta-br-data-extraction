@@ -1,56 +1,46 @@
 # Repository Guidelines
 
-## Project Structure
+## 项目与入口
 
-Docs-first repo for a Keeta (美团外卖巴西站) data-extraction project. There is no application source code, dependency manifest, or test suite — only Markdown, workbooks, and device evidence.
+Keeta Brazil Android UI报价采集试运行项目，包含Python/uiautomator2、XLSX导出器、离线测试及研究文档。先读TODO.md当前状态，再读project.md需求、README.md字段表与运行命令。
 
-- `project.md`: canonical requirements — extraction scope, volume (15000/次, 2 次/周), duration, budget, the 30-field spec with Chinese column names, and the toolchain (POCO X3 NFC + scrcpy + Android debug mode).
-- `TODO.md`: **the tracker** — status, open decisions (B1–B11), next steps. Read this first for project state.
-- `docs/keeta-debug-guide.md`: how to drive the phone (adb, scrcpy, uiautomator dump, BR env setup) — procedures only, no status.
-- `docs/keeta-brazil-research.md`: market background and the "consumer app only, no public API" constraint.
-- `docs/oc-scrape-findings.md`: web-side research transcript — working URLs, share-link parameters (`shopId`, `region=BR`), and what the sandbox could and could not open.
-- `docs/ac-br-抓取小结.md`: the transcribed checkout sample and amount reconciliation.
-- `docs/keeta-checkout-fields-cn.md`: pt-BR checkout-page UI copy not covered by the workbook.
-- `assets/keeta-br-结算页字段样例.xlsx`: the 30-field checkout-page spec (5 sheets) + sample data. Tracked in git.
-- `assets/weixin-1.png` … `assets/weixin-3.png`: requirement screenshots; red boxes mark the fields to extract. `weixin-1` = BRD long image, `weixin-3` = checkout page with red boxes.
-- `assets/feed-pizza.xml` / `.png`: search feed list dump (2026-10-21). `assets/shop.xml` / `.png`: shop detail page. `assets/p3.xml`: cart drawer @ 13:04. `assets/p3.png`: P3 `Checkout` screenshot @ 13:05 — no order placed.
-- No maintained extractor or executable scripts are currently provided. One-off probes and the temporary-file-dependent workbook builder were removed. Follow `docs/keeta-debug-guide.md` for verified capture commands.
-- All of the above are tracked in git; only `*.mp4` recordings are git-ignored (too large to keep).
+- scripts/keeta_stream.py：唯一当前连续采集入口。
+- scripts/keeta_scripe-v4.py：字段模块及单条诊断；export_keeta_stream.mjs为连续导出，export_keeta.mjs为单条诊断导出。
+- scripts/muse_keeta_scrape.py：独立实验方案，未作为维护入口验收；不要与主程序同时控制手机。
+- requirements.txt、docs/resources.md：依赖；docs/keeta-continuous-guide.md：运行/恢复/成功率；docs/keeta-debug-guide.md：设备排错。
+- docs/README.md：研究与规划索引。docs/cleanup-notes.md：旧探针/历史证据归档。
+- tests/fixtures与assets保留可复现实验/原始需求；不要把模拟数据写入final。
 
-**Naming convention (from `project.md`):** source-derived research docs are prefixed with the source that produced them — `p1` = Perplexity, `oc` = OpenAI Codex, `ac` = Anthropic Claude, `mm` = Meta Muse. When adding such a doc, prefix it accordingly rather than inventing a new scheme. Operational docs (tracker, setup guide, research digests) use plain descriptive names.
+## 命令与验证
 
-## Build, Test, and Development Commands
+安装与设备运行命令以README为准；离线测试：`python3 -m unittest discover -s tests -v`。没有Web服务或npm测试命令。
 
-None exist. Do not guess commands like `npm test` or `make build`. Use `rg --files` to list files. When adding executable code, document exact setup/run/test commands next to its manifest.
+文档改动核对链接，代码改动运行相关离线测试。涉及字段解析须覆盖缺失/0、金额/跨页一致性；涉及恢复须验证停止预算、状态识别及旧动作作废。不为普通文档更改重复运行手机采集。
 
-## Extraction Rules (from `project.md` §采集字段, `docs/ac-br-抓取小结.md` and `docs/oc-scrape-findings.md`)
+## 数据约束
 
-These constraints are easy to violate — check them before writing extraction logic or filling sample data:
+- 不伪造未见字段：未知None/CSV空，0是有效值。保留30业务字段顺序，审计字段另附。
+- BRL整数分；商品原价、商品折后、配送、服务费、总额和已用优惠核算一致才complete。可用未应用券不参与。单一服务费按项目口径两列相同，不固定金额99。
+- ETA为同页送达时刻减带日期/时区的采集时间后向上取整分钟，保留原时窗；过期/跨日歧义留空。
+- 账号类型0单→0，1–4单→1，≥5单→2；订单空历史才有0证据，不能数可见订单卡推算累计。
+- 不同设备/账号/过期轮次不得拼接。用户默认7550保存地址，地址提示气泡不算已选择。
+- failed/partial保留已读取字段和原因，不等于close。只明确Open/Closed才填状态。complete不代表30项满值；navigation不算店铺成功率分母。
+- 原始截图转录、网页研究与实机报价分开；官方商家API存在，但全市场消费者报价能力未核实。
 
-- Never fabricate values. If a field is not visible in a source page or screenshot (e.g. service-fee original price, discounted subtotal), leave it empty and say so. Absent in the sample: `account_id`, `shop_id`, `shop_address`, `distance`, `crawl_lat/lng`, `shop_lat/lng`, `account_type`, `is_member`.
-- `07:12–07:27` is a delivery *time window*, not a duration in minutes. `eta_min`/`eta_max` need collection time, date, and local timezone before any duration calculation.
-- Verify checkout arithmetic before using a sample: subtotal + delivery fee + service fee = total; original − discounted = discount amount. Do not double-count discounts.
-- Amounts are BRL (`R$`); do not convert currencies — store them as integer *cents* per the spec (R$ 45.00 = 4500 分).
-- Service fee has a single price in the sample: fill both `service_original` and `service_final` with 99 分 rather than leaving one blank or inventing a discount.
-- Distinguish *applied* discounts from visible-but-unused promotions (e.g. "Cupom 1 disponível – até R$ 15,75 OFF"); never combine them in arithmetic.
-- Record collection conditions (address, quantity, account, promotion, timestamp) with each live sample.
-- Batch planning context: per-store point pool at 1–2/2–3/3–4/4–5/5–6 km (5 points each), plus account pool, rate limits, and closed-store rollback — see B6–B8 in `TODO.md`.
-- The delivered sample is still a screenshot transcription, not a live quote. The phone-side path (adb → uiautomator dump of P3) now works but has not yet produced a live checkout sample; see C1–C3 in `TODO.md`. Do not present sandbox web results as live data.
+## 设备与操作边界
 
-## Coding Style & Naming Conventions
+当前X3 f753a0f3，X6 979f0245为独立历史设备；不混会话。未经实测不要假定输入权限、网络或GPS配置。
 
-Markdown with headings, short paragraphs, hyphenated lists. Content is Chinese — preserve existing Chinese terminology unless a translation is explicitly requested. New reference images follow the numbered pattern: `weixin-4.png`. No formatter is configured; no indentation rules exist yet — set them with the first implementation.
+不下单/支付、不应用券、不清未知购物车、不修改账号/安全权限。意外页有界返回后重新定位，不能沿用旧坐标。访问限制/验证码/外部支付/已提交订单/锁屏暂停；不换账号/网络/设备绕过。不承诺防封或15000条生产能力。
 
-## Testing Guidelines
+## 存储与隐私
 
-No test framework. For documentation changes, verify file paths, image references, and consistency with the extraction scope — **files have been renamed and relocated repeatedly mid-session, so re-check that referenced paths still resolve before committing.** Future extraction tests should cover field parsing, missing values, duplicate records, and batch sizes with reproducible fixtures.
+outputs/final只放交付CSV/XLSX；outputs/internal为SQLite、证据、日志和本地归档。中断不删已有记录；只清可再生成文件，历史移除项留可核对恢复副本。
 
-## Commits
+密码、Cookie、OTP、账号联系人和个人信息不进入文档/提交；捕获使用脱敏逻辑。不要擅自提交outputs或内部证据，部分final文件已有Git跟踪并不表示自动获准公开；遵守现有.gitignore。
 
-Git is initialized; use concise, imperative subjects with conventional prefixes (`docs:`, `chore:`, `feat:`). Example: `docs: clarify extraction fields`. Pull requests should state validation performed. Include annotated screenshots when changing field-selection behavior.
+## 文档与Git
 
-**Stage explicitly, not with `git add -A`.** Multiple agent sessions have worked in this directory concurrently and left unrelated staged renames; a blanket add sweeps them into your commit. Check `git status` before staging.
+中文文档用标题、短段落和列表。研究来源前缀：p1=Perplexity、oc=OpenAI Codex、ac=Anthropic Claude、mm=Meta Muse；操作文档普通描述名，新参考图按weixin-4.png编号。
 
-## Configuration & Data Handling
-
-Keep credentials, session cookies, OTPs, and collected personal data out of documents, screenshots, and commits. Document required configuration without embedding secret values. Never save passwords or cookies in docs. The `.gitignore` covers `.env`/session/cookie files, `.DS_Store`, Excel lock files (`~$*.xlsx`), and future Python/Node artifacts — extend it rather than committing such files.
+提交前git status，显式git add具体路径，不用git add -A；保留用户/并发会话已有修改和暂存状态。提交用docs:/chore:/feat:简洁祈使句，报告验证，不擅自提交/发布。路径/图片链接须复核可达。

@@ -112,3 +112,12 @@ Notes：提取解析红框内的数据
 ## WEditor
 
 WEditor is a browser-based visual tool for inspecting Android app interfaces and creating UI automation scripts, commonly used with the OpenATX /  uiautomator2  ecosystem. It can show the Android UI hierarchy, element properties, selectors, and generate Python automation code.
+
+
+## Quicker
+
+固定信息复用：7550 地址、账号上下文一次确认；店铺地址等静态信息缓存，后续主要刷新费用和 ETA。
+减少页面操作：页面就绪后立即读取，替换每步固定等 5 秒；仅在需要时滚动。
+优先简单购物车：优先单商品、少规格、金额能完整读取的店，避免无效加购和反复进店。
+失败证据离线重解析：像刚才恢复的那条，修解析即可补写，不重新访问 App。
+最后再调采集间隔：先保持当前间隔验证稳定性，再小幅缩短；任何访问异常立即停止，不自动反复重试。

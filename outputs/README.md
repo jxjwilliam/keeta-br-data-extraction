@@ -1,9 +1,7 @@
 # 输出入口
 
-你只需要查看 `final/`。
+只看final/中的CSV/XLSX。连续会话按圣保罗启动时间命名continuous_YYYYMMDD_HHMMSS；同会话逐条更新，恢复路径不变。history/是更早需复核的转录样例。
 
-- `final/latest_YYYYMMDD_HHMMSS.xlsx`、`final/latest_YYYYMMDD_HHMMSS.csv`：最新一轮通过地址和金额校验的结果；两者对应同一轮。
-- `final/history/`：历史 XLSX/CSV。文件名含 `needs-review` 的是旧样例，存在已知问题，不代表新版验证通过。
-- `internal/`：截图、XML、JSON、日志、调试和失败草稿，供程序排错，不作为交付入口。
+internal/streams/保存有效会话账本/证据/失败日志；internal/incidents/为访问异常证据；internal/archives/为已核对可恢复历史归档。没有表头CSV冒充结果，没有PNG/XML混入final。
 
-当前还没有新版完整实机验收结果，因此暂不提供 `latest`，避免把旧的 16 字段样例误认为新结果。下一轮通过后自动生成。
+当前状态/成功率以工作簿为准，运行命令见仓库README，数据口径见docs/keeta-continuous-guide.md。
