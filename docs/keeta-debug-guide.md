@@ -1,5 +1,8 @@
 # Keeta BR: P3 ETA Scraping, Setup & Debug Guide
 
+> 2026-10-23 路线更正：已核验官方商家 API，仍需确认消费者实时报价与授权范围；详见 `docs/oc-keeta-access-and-scale-research.md`。本指南中旧的 25–40 秒/条、接口便宜 100 倍及设备数量为未经验证的历史估算，不可用于生产承诺。当前 Access error 后保持暂停，屏幕唤醒与服务端访问异常应分别排查。
+
+
 Updated: 2026-10-21 | Scope: Keeta Brazil (São Paulo + Santos), Android app, P3 checkout page ETA/fee monitoring
 
 ---
@@ -283,6 +286,17 @@ adb shell settings put global http_proxy :0
 ```
 
 Android 7+ apps ignore user CA certificates by default, so you will likely need root or Frida to bypass SSL pinning. Do this only after section 6.
+
+### 7.1 Official API check (2026-10-23)
+
+Keeta does publish an official **Open Delivery API** at `api-docs.mykeeta.com`, but it is **merchant-side**, not consumer-side:
+
+- Merchant self-serve OAuth authorization; each call acts for one authorized merchant.
+- Order lifecycle: confirm order, ready for pickup, merchant fulfill, polling/webhook.
+- Menu API: a merchant pushes/syncs **its own** menu to Keeta; it is not a read API for browsing other shops.
+- Integrations are built by POS/ERP vendors (Linx, Consumer, PDV Legal, Xmenu); the Abrasel Open Delivery spec is the shared schema.
+
+It does **not** expose a consumer catalog/search/pricing/ETA API, and cannot answer "what does shop X charge at address Y". No public consumer API was found. App-internal APIs exist by definition but are undocumented; assume request signing, device fingerprinting and certificate pinning. Treat that as the C5 spike, not as an available integration.
 
 ---
 

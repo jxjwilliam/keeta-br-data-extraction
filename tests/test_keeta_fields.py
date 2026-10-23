@@ -52,6 +52,44 @@ class FieldTests(unittest.TestCase):
             ET.SubElement(root,'node',package=k.PACKAGE,text='Closes at 22:30',bounds='[0,0][100,100]')
             ET.ElementTree(root).write(p/'shop-info.xml')
             self.assertNotIn('shop_status',k.context_fields(p))
+    def test_free_delivery_is_zero_not_missing(self):
+        with tempfile.TemporaryDirectory() as t:
+            p=Path(t)
+            for source in (ROOT/'tests/fixtures/checkout-address-tooltip').glob('checkout-*'):
+                if source.suffix in ['.xml','.json']:shutil.copy(source,p/source.name)
+            for name in ['checkout-top.xml','checkout-fees.xml']:
+                tree=ET.parse(p/name)
+                for n in tree.iter('node'):
+                    if n.get('text')=='R$3.99':n.set('text','Free')
+                    if n.get('text')=='R$43.26':n.set('text','R$39.27')
+                    if n.get('text')=='Total R$43.26':n.set('text','Total R$39.27')
+                    if n.get('text')=='R$35.52 off applied':n.set('text','R$39.51 off applied')
+                tree.write(p/name)
+            k.parse(p);result=json.loads((p/'evidence.json').read_text())
+            self.assertEqual(result['record']['delivery_final'],0)
+            self.assertEqual(result['record']['delivery_original'],1399)
+    def test_two_item_checkout_reconciles_without_losing_item(self):
+        with tempfile.TemporaryDirectory() as t:
+            p=Path(t)
+            for source in (ROOT/'tests/fixtures/checkout-address-tooltip').glob('checkout-*'):
+                if source.suffix in ['.xml','.json']:shutil.copy(source,p/source.name)
+            tree=ET.parse(p/'checkout-top.xml');root=tree.getroot()
+            for text,bounds in [('1 × Fixture second item','[36,2100][917,2220]'),('R$38.28','[1001,2100][1157,2160]'),('R$63.80','[1016,2160][1157,2220]')]:
+                ET.SubElement(root,'node',package=k.PACKAGE,text=text,bounds=bounds)
+            for n in root.iter('node'):
+                if n.get('text')=='Total R$43.26':n.set('text','Total R$81.54')
+            tree.write(p/'checkout-top.xml')
+            tree=ET.parse(p/'checkout-fees.xml')
+            for n in tree.iter('node'):
+                if n.get('text')=='R$63.80':n.set('text','R$127.60')
+                if n.get('text')=='R$43.26':n.set('text','R$81.54')
+                if n.get('text')=='R$35.52 off applied':n.set('text','R$61.04 off applied')
+            tree.write(p/'checkout-fees.xml');k.parse(p)
+            result=json.loads((p/'evidence.json').read_text())
+            self.assertEqual(result['record']['product_original'],12760)
+            self.assertEqual(result['record']['product_final'],7656)
+            self.assertIn('Fixture second item',result['record']['product_info'])
+            self.assertEqual(result['conditions']['quantity'],2)
     def test_address_tooltip_is_not_selected_address(self):
         with tempfile.TemporaryDirectory() as t:
             p=Path(t)

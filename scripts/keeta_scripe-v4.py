@@ -125,15 +125,23 @@ def parse(out, context=None):
     summary=next(i for i,n in enumerate(top) if n['text']=='Order summary')
     row['shop_name']=top[summary+1]['text']
     items=[n for n in top if re.match(r'^\d+\s*[×x]\s+',n['text'])]
-    if len(items)!=1:raise ValueError('此 PoC 只支持单商品；不确定时停止导出')
-    item=items[0];row['product_info']=item['text']
-    amounts=[n for n in top if n['b'][0]>item['b'][2] and item['b'][1]-5<=n['b'][1]<=item['b'][3] and re.fullmatch(r'R\$\s*[\d.,]+',n['text'])]
-    amounts.sort(key=lambda n:n['b'][1])
-    if len(amounts)!=2:raise ValueError('商品原价/折后价未分别读到')
-    row['product_final'],row['product_original']=[money(n['text']) for n in amounts]
+    if not items:raise ValueError('未读取到结算商品')
+    row['product_info']='; '.join(item['text'] for item in items)
+    original=final=0
+    for item in items:
+        amounts=[n for n in top if n['b'][0]>item['b'][2] and item['b'][1]-5<=n['b'][1]<=item['b'][3] and re.fullmatch(r'R\$\s*[\d.,]+',n['text'])]
+        amounts.sort(key=lambda n:n['b'][1])
+        if len(amounts)!=2:raise ValueError('商品原价/折后价未分别读到，或商品跨页未完整显示')
+        item_final,item_original=[money(n['text']) for n in amounts]
+        final+=item_final;original+=item_original
+    row['product_final']=final;row['product_original']=original
     subtotal=row_money(fees,'Subtotal');delivery=row_money(fees,'Delivery fee');service=row_money(fees,'Service fee');total=row_money(fees,'Total')
-    if len(delivery)!=2 or len(service)!=1 or len(total)!=1:raise ValueError('费用结构变化，停止导出')
-    row.update(delivery_original=delivery[0],delivery_final=delivery[1],service_original=service[0],service_final=service[0],total_final=total[0])
+    delivery_label=next(n for n in fees if n['text']=='Delivery fee')
+    delivery_y=(delivery_label['b'][1]+delivery_label['b'][3])/2
+    free_delivery=any(n['text'].lower() in ('free','grátis','gratis') and n['b'][0]>delivery_label['b'][2] and abs((n['b'][1]+n['b'][3])/2-delivery_y)<25 for n in fees)
+    if len(service)!=1 or len(total)!=1 or not (len(delivery)==2 or (len(delivery)==1 and free_delivery)):
+        raise ValueError('费用结构变化，停止导出')
+    row.update(delivery_original=delivery[0],delivery_final=0 if free_delivery else delivery[1],service_original=service[0],service_final=service[0],total_final=total[0])
     row['total_original']=row['product_original']+row['delivery_original']+row['service_original']
     assert subtotal==[row['product_original']], '商品原价与 Subtotal 不符'
     assert row['product_final']+row['delivery_final']+row['service_final']==row['total_final'],'费用不平'
@@ -169,7 +177,7 @@ def parse(out, context=None):
         for f in ('shop_address','shop_status'):notes[f]='同店铺详情页，来源时间见上下文 shop-info.json'
         notes['user_completed_orders_count']='同设备登录会话订单页 My orders / No orders yet；未统计可见订单卡'
         notes['account_type']='用户确认映射：0单→0，1–4单→1，≥5单→2'
-    evidence={'record':row,'field_sources':notes,'eta_raw':eta,'timezone':'America/Sao_Paulo','fee_capture':json.loads((out/'checkout-fees.json').read_text()),'conditions':{'delivery_address_confirmed':not address_unconfirmed,'quantity':1,'account':'当前已登录账号，内部 ID 未读取','promotion':'未操作 Apply now；可用券不计入已用优惠','address':row['crawl_address']},'qa':{'subtotal_cents':subtotal[0],'applied_discount_cents':discount,'amounts_reconciled':True,'same_item_and_total_across_pages':True},'limitations':['未取得页面未展示的账号、坐标、店铺 ID/地址/距离及明确营业状态','顶部与费用页为顺序采集，并非原子报价','未提交订单']}
+    evidence={'record':row,'field_sources':notes,'eta_raw':eta,'timezone':'America/Sao_Paulo','fee_capture':json.loads((out/'checkout-fees.json').read_text()),'conditions':{'delivery_address_confirmed':not address_unconfirmed,'quantity':sum(int(re.match(r'^(\d+)',item['text'])[1]) for item in items),'account':'当前已登录账号，内部 ID 未读取','promotion':'未操作 Apply now；可用券不计入已用优惠','address':row['crawl_address']},'qa':{'subtotal_cents':subtotal[0],'applied_discount_cents':discount,'amounts_reconciled':True,'same_item_and_total_across_pages':True},'limitations':['未取得页面未展示的账号、坐标、店铺 ID/地址/距离及明确营业状态','顶部与费用页为顺序采集，并非原子报价','未提交订单']}
     (out/'evidence.json').write_text(json.dumps(evidence,ensure_ascii=False,indent=2))
     with (out/'draft.csv').open('w',encoding='utf-8-sig',newline='') as f:
         w=csv.DictWriter(f,fieldnames=FIELDS);w.writeheader();w.writerow(row)

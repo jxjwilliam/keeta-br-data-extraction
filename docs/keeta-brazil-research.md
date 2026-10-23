@@ -25,10 +25,10 @@
 - **菜单层**：菜单分类、菜品名、描述、图片、价格、折扣划线价、加料/选项、是否售罄。
 - **促销**：每日特价、菜品折扣（首单最高 6 折）、优惠券面额。
 
-## 关键约束：没有网页版、没有公开 API
+## 关键约束：消费者报价与获授权商家 API 的范围不同
 - **消费者端只有 App**，巴西没有网页订餐入口。⚠️ **keeta.com.br 不是美团的**（是一家宠物用品店）；keeta.com 也属于无关的加密公司，别搞混。
 - 美团 Keeta 全球官网域名：keeta-global.com；**商家门户：merchant.keeta-global.com**（餐厅注册、上传菜单/价格/图片、管理促销）。
-- **没有官方公开/开发者 API**。App 走美团内部（Sailor）后端接口；有 Freelancer 悬赏逆向 Keeta API，接口形状类似 `/store/{id}`、`/menu/{id}`——说明现实的抓取路线是 App 流量拦截/内部接口，而不是文档化端点。
+- **2026-10-23 更正**：已核验 [官方开发者文档](https://api-docs.mykeeta.com/) 及巴西官网 API 入口，存在需商家授权的菜单、店铺、订单集成 API。此前“没有官方公开/开发者 API”的结论错误；尚未找到并核验任意消费者账号/配送地址的下单前实时报价接口。详见 `docs/oc-keeta-access-and-scale-research.md`。
 - Android 包名：`com.sankuai.sailor.afooddelivery`，发布方 KANGAROO LIMITED，1000 万+ 下载。iOS App ID：1662451643。
 
 ## 现有数据集/开源项目
@@ -36,7 +36,7 @@
 - 商业数据商（Real Data API、Actowiz、Food Data Scrape）在卖 Keeta 抓取服务，但主要针对沙特市场；其字段 schema 与上面一致，并提到 JS 渲染、反爬、UI 频繁变更等障碍。
 
 ## 结论（对步骤②的影响）
-数据只在 App 内：找到红框类似数据的现实路径是 App 内部接口或商家门户。抓取路线与设备方案见 `docs/keeta-debug-guide.md`，进度见 `TODO.md`。
+消费者实时报价目前只在 App 中实测取得；获授权商家主数据可评估官方 API，不能将其当作全市场消费者报价来源。抓取路线与设备方案见 `docs/keeta-debug-guide.md`，进度见 `TODO.md`。
 
 ## 主要来源
 - TechBuzzChina 两篇 Keeta 系列；Caixin Global 2025-10-31；economiasp 2026-10-07 扩张报道；TechTudo Keeta 介绍；Google Play 商店页（包名/下载量）；PYMNTS/CADE 反垄断报道。

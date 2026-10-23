@@ -10,6 +10,40 @@ Notes：提取解析红框内的数据
 - BR; Sao Paulo + Santos / São Vicente, Greater São Paulo
 - excel形式即可
 - ETA: Estimated Time of Arrival
+- R. Jandaia, 7550 - Bela Vista, São Paulo - SP, 01316-100, Brazil
+- R. Floriano Peixoto, 1 - Centro, Salto - SP, 13328-300, Brazil
+### Phones
+
+| # | Phone |
+| ---- | ---- |
+| 1 | +55 28 96988-5772 |
+| 2 | +55 91 97437-0892 |
+| 3 | +55 65 94517-5954 |
+| 4 | +55 53 97237-5239 |
+| 5 | +55 55 97780-5292 |
+| 6 | +55 35 96437-6217 |
+| 7 | +55 81 91606-2392 |
+| 8 | +55 71 94576-5060 |
+| 9 | +55 46 95913-7499 |
+| 10 | +55 33 91086-4373 |
+| 11 | +55 41 96446-7862 |
+| 12 | +55 54 90653-3150 |
+
+### Addresses
+
+| # | Address | 街区 | 城市 | 邮编 |
+| ---- | ---- | ---- | ---- | ---- |
+| 1 | Rua Augusta, 1508 - Consolação, São Paulo - SP, 01304-001, Brazil | Consolação | São Paulo | 01304-001 |
+| 2 | Avenida Paulista, 1000 - Bela Vista, São Paulo - SP, 01310-100, Brazil | Bela Vista | São Paulo | 01310-100 |
+| 3 | Rua Oscar Freire, 702 - Jardins, São Paulo - SP, 01426-000, Brazil | Jardins | São Paulo | 01426-000 |
+| 4 | Rua da Consolação, 2391 - Consolação, São Paulo - SP, 01301-100, Brazil | Consolação | São Paulo | 01301-100 |
+| 5 | Avenida Brigadeiro Luís Antônio, 2344 - Jardins, São Paulo - SP, 01402-000, Brazil | Jardins | São Paulo | 01402-000 |
+| 6 | Rua Teodoro Sampaio, 1020 - Pinheiros, São Paulo - SP, 05406-000, Brazil | Pinheiros | São Paulo | 05406-000 |
+| 7 | Rua dos Pinheiros, 555 - Pinheiros, São Paulo - SP, 05422-010, Brazil | Pinheiros | São Paulo | 05422-010 |
+| 8 | Avenida Rebouças, 3970 - Pinheiros, São Paulo - SP, 05402-600, Brazil | Pinheiros | São Paulo | 05402-600 |
+| 9 | Rua Harmonia, 123 - Vila Madalena, São Paulo - SP, 05435-000, Brazil | Vila Madalena | São Paulo | 05435-000 |
+| 10 | Alameda dos Anapurus, 1450 - Moema, São Paulo - SP, 04087-004, Brazil | Moema | São Paulo | 04087-004 |
+
 
 ## Info
 
@@ -23,53 +57,6 @@ Notes：提取解析红框内的数据
 | iOS 入口 | https://apps.apple.com/br/app/keeta-delivery-de-comida/id1662451643 |
 | 业务城市 | 圣保罗（São Paulo）及大圣保罗；试点含桑托斯、圣维森特 |
 | 用户提供分享链接 | https://m.keeta-global.com/marketing/applaunch/index.html?...&shopId=159559935&region=BR |
-
-
-## 采集字段
-
-需求表共 30 个字段。字段代码与描述沿用需求表英文口径（`assets/weixin-1.png` 与 `assets/weixin-2.png` 内容相同），红框取值示意见 `assets/weixin-3.png`，中文列名沿用 `assets/keeta-br-结算页字段样例.xlsx` 的「字段中文对照」表。
-
-| 序号 | 字段代码 | 中文列名 | 描述 |
-| ---- | -------- | -------- | ---- |
-| 1 | batch_no | 批次号 | 批次，年月日命名即可，YYYYMMDD |
-| 2 | country | 国家 | 国家 |
-| 3 | platform | 平台 | 平台 |
-| 4 | city_name | 城市名称 | 城市名称 |
-| 5 | crawl_time | 采集时间 | 数据采集时间（local 时间），时间戳格式，要精确到秒 |
-| 6 | account_id | 用户 ID | 用户的账号 ID |
-| 7 | user_completed_orders_count | 历史完成订单数 | 该用户历史累计完单个数 |
-| 8 | account_type | 账号类型 | 账号类型，0：新客，1：中客，2：老客 |
-| 9 | is_member | 是否会员 | 1：会员；0：非会员 |
-| 10 | shop_id | 店铺 ID | 店铺 ID（需求表标注：原始报文中获取） |
-| 11 | shop_name | 店铺名称 | 店铺名称 |
-| 12 | crawl_lat | 采集点纬度 | 采集经纬度（纬度） |
-| 13 | crawl_lng | 采集点经度 | 采集经纬度（经度） |
-| 14 | crawl_address | 采集点地址 | 采集的定位地址 |
-| 15 | shop_lat | 店铺纬度 | 店铺经纬度（纬度） |
-| 16 | shop_lng | 店铺经度 | 店铺经纬度（经度） |
-| 17 | shop_address | 店铺地址 | 店铺地址 |
-| 18 | ceta_min | 最小配送时长 | 最小配送时长 |
-| 19 | ceta_max | 最大配送时长 | 最大配送时长 |
-| 20 | product_info | 商品信息 | 结算页商品展示信息 |
-| 21 | product_original | 商品原价 | 商品原价，仅保留数字，单位：分 |
-| 22 | product_final | 商品折后价 | 商品券后价，仅保留数字，单位：分 |
-| 23 | delivery_original | 配送费原价 | 配送费原价，仅保留数字，单位：分 |
-| 24 | delivery_final | 配送费折后价 | 配送费券后价，仅保留数字，单位：分 |
-| 25 | service_original | 服务费原价 | 服务费原价，仅保留数字，单位：分 |
-| 26 | service_final | 服务费折后价 | 服务费券后价，仅保留数字，单位：分 |
-| 27 | total_original | 订单原价总额 | 仅保留数字，单位：分 |
-| 28 | total_final | 订单折后总额 | 仅保留数字，单位：分 |
-| 29 | distance | 配送距离 | 配送距离 |
-| 30 | shop_status | 店铺状态 | 店铺状态，枚举值：open/close 等 |
-
-口径说明（需求表之外的实现约束，来自参考图核对）：
-
-- 金额字段一律只保留数字、单位为分，币种 BRL 不做汇率换算（R$ 45.00 = 4500 分）。
-- `ceta_min` / `ceta_max` 在需求表写作「最小/最大配送时长」，但结算页给的是预计送达时刻区间（Previsão 07:12–07:27）。要得到分钟数，需同时记录 `crawl_time`、采集日期与当地时区后再换算，不能把时刻当时长。
-- 结算页不展示的字段不要补造：`account_id`、`user_completed_orders_count`、`account_type`、`is_member`、`crawl_lat/lng`、`shop_lat/lng`、`shop_address`、`distance` 需登录账号或从店铺页/地理编码补齐。
-- `shop_status` 为 open/close 枚举；需求表要求无论是否采集到信息都反馈一条记录，此时店铺状态置 close、其余字段置空。
-- 样例数据与红框原文对照见 `assets/keeta-br-结算页字段样例.xlsx`（5 个工作表）与 `docs/ac-br-抓取小结.md`。
-
 
 ## 工具
 
@@ -93,6 +80,34 @@ Notes：提取解析红框内的数据
 
 ## VPN
 
+1. VPN 不是硬性要求
+2. 美团风控（IP/账号/设备维度限流）
+3. 关 WiFi 用移动数据打开 Keeta。
+
+| 配置项 | 对你当前采集任务的判断 |
+|---|---|
+| **App 内市场选择巴西** | 应保持，确保访问巴西业务 |
+| **配送地址选择圣保罗** | 关键。使用账户保存的地址，获取对应商户、配送费和 ETA |
+| **VPN 切到巴西／圣保罗** | **未证实必须**。可以作为网络对照测试，不能保证解决问题 |
+| **Android 系统 region 设为巴西** | **未证实必须**，暂不需要为了排错反复切换 |
+| **系统时区改为圣保罗** | **未证实是访问条件**；对采集时间与 ETA 核算有帮助，也可以通过程序明确转换时区 |
+
+## ipinfo.io/json
+
+```json
+{
+  "ip": "184.65.89.63",
+  "hostname": "s0106b3e07831be3.vs.shawcable.net",
+  "city": "Surrey",
+  "region": "British Columbia",
+  "country": "CA",
+  "loc": "49.1063,-122.8251",
+  "org": "AS6327 Shaw Communications",
+  "postal": "V3Z",
+  "timezone": "America/Vancouver",
+  "readme": "https://ipinfo.io/missingauth"
+}
+```
 
 ## WEditor
 
