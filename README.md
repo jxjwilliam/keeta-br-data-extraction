@@ -38,6 +38,31 @@ python3 scripts/keeta_stream.py \
 - 默认选择用户已指定的 Rua Jandaia, 7550, São Paulo, SP 保存地址。保留当前账号和优惠设置，不提交订单或支付。
 - 访问限制/验证时暂停；只有人工确认恢复后才额外使用 `--access-restored`。VPN 不能保证避免限制。
 
+### 持续追加
+
+```bash
+python3 scripts/keeta_stream.py \
+  --serial f753a0f3 --interval 180 --continuous --keep-screenshots 5 \
+  --resume outputs/internal/streams/continuous_20261023_191140
+```
+
+`--continuous`不受max-attempts限制；可与stop-at合用。单窗口无新店时冷却至少180秒后从下一窗口继续，游标保存到内部feed-cursor.json；连续三个窗口无新增或达到12页深度预算仍停止，避免无界刷新。限制/验证/连续失败等安全停止保持。Ctrl+C结束。
+
+### 指定当天截止时间
+
+例如，按温哥华当天15:57停止手机采集，记录开始/结束及停止原因：
+
+```bash
+python3 scripts/keeta_stream.py \
+  --serial f753a0f3 \
+  --interval 180 \
+  --max-attempts 1000 \
+  --stop-at 15:57 \
+  --run-timezone America/Vancouver
+```
+
+`--stop-at`只接受当天尚未到达的HH:MM；截止时中断等待/采集，保留当前已读字段，再完成本地文件保存（导出可能晚几秒结束）。安全停止条件仍优先，1000不是访问配额。运行时间在内部executions/run_*.json及run-status.json留存，Excel“成功率”页附开始/结束/截止时间和时区。文件名及业务采集时间仍使用圣保罗时间。
+
 ## 结果
 
 只查看 `outputs/final/`：每会话一组 `continuous_YYYYMMDD_HHMMSS.csv/xlsx`，按圣保罗启动时间命名，同会话逐条更新；历史结果不覆盖。

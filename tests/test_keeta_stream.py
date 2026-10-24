@@ -122,6 +122,31 @@ class LedgerTests(unittest.TestCase):
             with patch.dict(s.os.environ,{'KEETA_RUNTIME':str(runtime)}),patch.object(s.subprocess,'run',return_value=SimpleNamespace(returncode=1,stdout='',stderr='fixture failure')):
                 with self.assertRaises(RuntimeError):ledger.write_xlsx()
             self.assertEqual(ledger.xlsx_path.read_bytes(),b'fixture workbook');ledger.db.close()
+    def test_stop_deadline_timezone_and_past_rejected(self):
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+        now=datetime(2026,10,23,15,10,tzinfo=ZoneInfo('America/Vancouver'))
+        target=s.stop_deadline('15:57','America/Vancouver',now)
+        self.assertEqual(target.isoformat(),'2026-10-23T15:57:00-07:00')
+        with self.assertRaises(ValueError):s.stop_deadline('15:00','America/Vancouver',now)
+        with self.assertRaises(ValueError):s.stop_deadline('25:00','America/Vancouver',now)
+    def test_deadline_interrupts_wait_without_phone(self):
+        from datetime import datetime,timedelta,timezone
+        old=s.signal.getsignal(s.signal.SIGALRM);started=s.time.monotonic()
+        try:
+            s.arm_deadline(datetime.now(timezone.utc)+timedelta(seconds=.05))
+            with self.assertRaises(s.RunDeadlineReached):s.time.sleep(5)
+            self.assertLess(s.time.monotonic()-started,1)
+        finally:
+            s.signal.setitimer(s.signal.ITIMER_REAL,0);s.signal.signal(s.signal.SIGALRM,old)
+    def test_feed_checkpoint_advances_and_depth_is_bounded(self):
+        with tempfile.TemporaryDirectory() as t:
+            c=self.make_recovery_collector(t)
+            c.advance_feed(4)
+            import json
+            self.assertEqual(json.loads((Path(t)/'feed-cursor.json').read_text())['offset'],4)
+            with self.assertRaises(s.RecoveryFailed):c.advance_feed(13)
+            self.assertEqual(c.feed_offset,4)
     def test_access_error_persists_pause(self):
         with tempfile.TemporaryDirectory() as t:
             with self.assertRaises(s.AccessPaused):

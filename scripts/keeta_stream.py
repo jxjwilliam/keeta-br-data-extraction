@@ -4,12 +4,34 @@
 恢复：加 --resume outputs/internal/streams/<会话目录>。
 优先简单商品，支持明确的单选必选规格；不下单、不改账号、不操作优惠。
 """
-import argparse,csv,gzip,hashlib,importlib.util,json,os,re,shutil,sqlite3,subprocess,sys,tempfile,time,traceback,threading
+import argparse,csv,gzip,hashlib,importlib.util,json,os,re,shutil,sqlite3,subprocess,sys,tempfile,time,traceback,threading,signal,itertools
 from datetime import datetime
 from pathlib import Path
 ROOT=Path(__file__).resolve().parents[1]
 spec=importlib.util.spec_from_file_location('keeta_v4',ROOT/'scripts/keeta_scripe-v4.py')
 k=importlib.util.module_from_spec(spec);spec.loader.exec_module(k)
+
+class RunDeadlineReached(KeyboardInterrupt):
+    pass
+
+def stop_deadline(clock,zone,now=None):
+    from zoneinfo import ZoneInfo
+    local=now or datetime.now(ZoneInfo(zone))
+    hour,minute=map(int,clock.split(':'))
+    target=local.replace(hour=hour,minute=minute,second=0,microsecond=0)
+    if target<=local:raise ValueError('截止时间已过；请指定今天尚未到达的时刻')
+    return target
+
+def arm_deadline(deadline):
+    if deadline is None:return
+    def interrupt(signum,frame):raise RunDeadlineReached('达到用户指定截止时间')
+    signal.signal(signal.SIGALRM,interrupt)
+    signal.setitimer(signal.ITIMER_REAL,max(.001,deadline.timestamp()-time.time()))
+
+def save_run_status(ledger,metadata):
+    path=ledger.run_metadata_path
+    path.write_text(json.dumps(metadata,ensure_ascii=False,indent=2))
+    (ledger.directory/'run-status.json').write_text(json.dumps(metadata,ensure_ascii=False,indent=2))
 
 AUDIT_FIELDS=['attempt_id','collection_status','filled_fields','error_reason','amounts_validated']
 EXPORT_FIELDS=k.FIELDS+AUDIT_FIELDS
@@ -72,7 +94,7 @@ class Ledger:
             data=work/'records.json';target=work/'snapshot.xlsx'
             data.write_text(json.dumps([{f:r.get(f) for f in EXPORT_FIELDS} for r in rows],ensure_ascii=False))
             shutil.copy2(ROOT/'scripts/export_keeta_stream.mjs',work/'export.mjs')
-            result=subprocess.run([str(node),str(work/'export.mjs'),str(data),str(target),str(ROOT)],capture_output=True,text=True)
+            result=subprocess.run([str(node),str(work/'export.mjs'),str(data),str(target),str(ROOT),str(getattr(self,'run_metadata_path',''))],capture_output=True,text=True)
             (self.directory/'xlsx.log').write_text(result.stdout+'\n'+result.stderr)
             if result.returncode:raise RuntimeError('XLSX 更新失败，CSV/账本已保存')
             # 成品完整后原子替换；临时JSON/XLSX随目录释放，不留重复快照。
@@ -111,6 +133,9 @@ def guard_access(ns, session):
 
 class PageRecovered(RuntimeError):
     """页面已恢复，但旧动作作废，必须重新定位。"""
+
+class FeedWindowExhausted(RuntimeError):
+    pass
 
 class RecoveryFailed(RuntimeError):
     pass
@@ -290,6 +315,8 @@ class Collector:
         self.d=d;self.session=session;self.ledger=ledger
         self.account={};self.done={r.get('shop_name') for r in ledger.rows()}
         self.tried=set();self.failures=0;self.recovery_count=0
+        checkpoint=self.session/'feed-cursor.json'
+        self.feed_offset=json.loads(checkpoint.read_text()).get('offset',0) if checkpoint.exists() else 0
         for attempt in self.session.glob('attempt_*'):
             if (attempt/'failure.log').exists() and '商品存在必选规格' not in (attempt/'failure.log').read_text():
                 try:
@@ -407,6 +434,11 @@ class Collector:
         self.home()
     def check_limit(self):
         self.texts()
+    def advance_feed(self,offset):
+        if offset>12:raise RecoveryFailed('已达到列表深度预算，停止而非无界滚动')
+        self.feed_offset=offset
+        (self.session/'feed-cursor.json').write_text(json.dumps({'offset':offset,'updated_at':datetime.now(k.TZ).isoformat()}))
+        self.log_navigation('feed_cursor','home','advance')
     def open_shop(self):
         if page_kind(self.texts()) not in NORMAL_PAGES:self.recover_page()
         if self.d(text='Add to cart').exists:
@@ -416,8 +448,13 @@ class Collector:
             if ns and ns[0]['text'].strip() not in self.done:
                 return ns[0]['text'].strip()
         self.home()
+        base=getattr(self,'feed_offset',0)
+        for _ in range(base):
+            self.check_limit()
+            w,h=self.d.window_size();self.d.swipe(w//2,int(h*.76),w//2,int(h*.35),.5);self.wait()
         opened=0
-        for scroll in range(4):
+        for local_scroll in range(4):
+            scroll=base+local_scroll
             self.check_limit()
             import xml.etree.ElementTree as E
             candidates=[]
@@ -430,7 +467,9 @@ class Collector:
             for b in candidates:
                 key=(scroll,tuple(b))
                 if key in self.tried:continue
-                if opened>=6:raise RuntimeError('本轮列表进店预算已用完，停止无效导航')
+                if opened>=6:
+                    self.advance_feed(scroll+1)
+                    raise FeedWindowExhausted('当前列表窗口预算用完，已保存下一页游标')
                 opened+=1
                 self.tried.add(key);self.d.click((b[0]+b[2])//2,(b[1]+b[3])//2)
                 try:self.wait()
@@ -448,7 +487,8 @@ class Collector:
                     self.d.press('back');self.wait();continue
                 return name
             w,h=self.d.window_size();self.d.swipe(w//2,int(h*.76),w//2,int(h*.35),.5);self.wait()
-        raise RuntimeError('当前列表未找到新店铺，停止而非重复插入旧店')
+        self.advance_feed(base+4)
+        raise FeedWindowExhausted('当前四页没有新店铺，已保存下一窗口游标')
     def open_shop_after_recovery(self):
         retries=getattr(self,'_navigation_retries',0)
         if retries>=2:raise RecoveryFailed('进店导航连续偏离，停止恢复')
@@ -527,7 +567,12 @@ def assemble_record(run,account):
     return row
 
 def main():
-    p=argparse.ArgumentParser();p.add_argument('--serial',default='f753a0f3');p.add_argument('--interval',type=float,default=180);p.add_argument('--resume',type=Path);p.add_argument('--keep-screenshots',type=int,default=10);p.add_argument('--max-attempts',type=int,default=3);p.add_argument('--access-restored',action='store_true');a=p.parse_args()
+    p=argparse.ArgumentParser();p.add_argument('--serial',default='f753a0f3');p.add_argument('--interval',type=float,default=180);p.add_argument('--resume',type=Path);p.add_argument('--keep-screenshots',type=int,default=10);p.add_argument('--max-attempts',type=int,default=3);p.add_argument('--access-restored',action='store_true');p.add_argument('--continuous',action='store_true',help='持续到手动停止/截止/安全停止；空窗口冷却后推进，连续三个空窗口仍停止');p.add_argument('--stop-at',help='当天截止HH:MM');p.add_argument('--run-timezone',default='America/Vancouver');a=p.parse_args()
+    from zoneinfo import ZoneInfo
+    try:
+        run_zone=ZoneInfo(a.run_timezone)
+        deadline=stop_deadline(a.stop_at,a.run_timezone) if a.stop_at else None
+    except (ValueError,KeyError) as e:p.error(str(e))
     if a.keep_screenshots<0:p.error('keep-screenshots 必须为非负数')
     session=a.resume or ROOT/'outputs/internal/streams'/('continuous_'+datetime.now(k.TZ).strftime('%Y%m%d_%H%M%S'))
     marker=session/'access-paused.json'
@@ -536,24 +581,42 @@ def main():
         marker.rename(session/('access-paused-'+datetime.now(k.TZ).strftime('%Y%m%d_%H%M%S')+'.json'))
     if a.max_attempts<1:p.error('max-attempts 必须大于 0')
     ledger=Ledger(session,ROOT/'outputs/final');ledger.write_csv()
-    recover_saved_attempts(session,ledger)
-    backfill_attempts(session,ledger)
+    run_started=datetime.now(run_zone)
+    executions=session/'executions';executions.mkdir(exist_ok=True)
+    ledger.run_metadata_path=executions/('run_'+run_started.strftime('%Y%m%d_%H%M%S_%f')+'.json')
+    metadata={'started_at':run_started.isoformat(timespec='seconds'),'ended_at':None,'deadline':deadline.isoformat() if deadline else None,'timezone':a.run_timezone,'status':'running','stop_reason':None}
+    save_run_status(ledger,metadata)
+    print('RUN START',metadata['started_at'],'STOP AT',metadata['deadline'],flush=True)
     print('SESSION',session,flush=True);print('CSV',ledger.csv_path,flush=True)
-    import uiautomator2 as u
-    d=u.connect(a.serial);d.jsonrpc.setConfigurator({'waitForIdleTimeout':0})
     stop_awake=threading.Event()
-    def keep_awake():
-        while not stop_awake.is_set():
-            subprocess.run(['adb','-s',a.serial,'shell','input','keyevent','KEYCODE_WAKEUP'],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
-            stop_awake.wait(5)
-    threading.Thread(target=keep_awake,daemon=True).start()
-    collector=Collector(d,session,ledger)
     try:
+        arm_deadline(deadline)
+        recover_saved_attempts(session,ledger)
+        backfill_attempts(session,ledger)
+        import uiautomator2 as u
+        d=u.connect(a.serial);d.jsonrpc.setConfigurator({'waitForIdleTimeout':0})
+        def keep_awake():
+            while not stop_awake.is_set():
+                if deadline and time.time()>=deadline.timestamp():return
+                subprocess.run(['adb','-s',a.serial,'shell','input','keyevent','KEYCODE_WAKEUP'],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+                stop_awake.wait(5)
+        threading.Thread(target=keep_awake,daemon=True).start()
+        collector=Collector(d,session,ledger)
         collector.account_context()
-        for attempt_index in range(a.max_attempts):
+        empty_windows=0
+        indices=itertools.count() if a.continuous else range(a.max_attempts)
+        for attempt_index in indices:
             collector.check_limit()
-            try:name=collector.open_shop()
-            except PageRecovered:name=collector.open_shop_after_recovery()
+            try:
+                try:name=collector.open_shop()
+                except PageRecovered:name=collector.open_shop_after_recovery()
+            except FeedWindowExhausted as e:
+                if not a.continuous:raise
+                empty_windows+=1
+                if empty_windows>=3:raise RecoveryFailed('连续三个列表窗口没有新增店铺，停止无效访问')
+                print('FEED COOLDOWN',str(e),'next offset',collector.feed_offset,flush=True)
+                time.sleep(max(a.interval,180));continue
+            empty_windows=0
             run=session/('attempt_'+datetime.now(k.TZ).strftime('%H%M%S_%f'));run.mkdir()
             (run/'attempt.json').write_text(json.dumps({'shop_name':name,'started_at':datetime.now(k.TZ).isoformat()},ensure_ascii=False))
             try:
@@ -581,15 +644,24 @@ def main():
                 if any(t in str(e) for t in ['购物车冲突','结算未选地址','地址尚未','限流','页面未稳定']):raise
                 if collector.failures>=3:raise RuntimeError('连续三店失败，停止无效重试')
             trim_evidence(session,a.keep_screenshots)
-            if attempt_index+1<a.max_attempts:
+            if a.continuous or attempt_index+1<a.max_attempts:
                 time.sleep(max(a.interval,180))
         print("BATCH COMPLETE：保守小批次结束，等待评估后再继续",flush=True)
+    except RunDeadlineReached:
+        metadata['stop_reason']='deadline'
+        print('DEADLINE：停止手机采集，保存已有记录',flush=True)
     except KeyboardInterrupt:
+        metadata['stop_reason']='interrupted'
         print('STOPPED：已写记录保留',len(ledger.rows()),flush=True)
     except Exception as e:
+        metadata['stop_reason']=str(e)
         (session/'stop.log').write_text(traceback.format_exc());print('STOPPED',str(e),'已保存',len(ledger.rows()),flush=True)
     finally:
+        signal.setitimer(signal.ITIMER_REAL,0)
         stop_awake.set()
+        metadata.update(status='stopped',ended_at=datetime.now(run_zone).isoformat(timespec='seconds'))
+        metadata['stop_reason']=metadata['stop_reason'] or 'attempt_limit'
+        save_run_status(ledger,metadata)
         trim_evidence(session,a.keep_screenshots)
         reported={r['attempt_id'] for r in ledger.export_rows()}
         for unfinished in session.glob('attempt_*'):
@@ -600,6 +672,9 @@ def main():
         if ledger.export_rows():
             try:ledger.write_xlsx()
             except Exception as e:print('保留 CSV；',str(e),flush=True)
-        print('TOTAL',len(ledger.rows()),flush=True)
+        metadata['export_finished_at']=datetime.now(run_zone).isoformat(timespec='seconds')
+        save_run_status(ledger,metadata)
+        print('RUN END',metadata['ended_at'],'REASON',metadata['stop_reason'],flush=True)
+        print('TOTAL',len(ledger.rows()),'ATTEMPTS',len(ledger.export_rows()),flush=True)
 
 if __name__=='__main__':main()

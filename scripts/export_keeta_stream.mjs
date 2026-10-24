@@ -1,6 +1,6 @@
 import fs from 'node:fs/promises';
 import {Workbook,SpreadsheetFile} from '@oai/artifact-tool';
-const [source,target,repo]=process.argv.slice(2);
+const [source,target,repo,runMetadata]=process.argv.slice(2);
 const rows=JSON.parse(await fs.readFile(source,'utf8'));
 const keys=Object.keys(rows[0]);
 const docs=(await fs.readFile(repo+'/README.md','utf8'))+'\n'+(await fs.readFile(repo+'/project.md','utf8'));
@@ -24,5 +24,10 @@ summary.getRange('A1:B8').format={columnWidth:45,wrapText:true,rowHeight:34};
 summary.getRange('A1:B1').format={fill:'#24445A',font:{bold:true,color:'#FFFFFF'}};
 summary.getRange('A10:B40').values=[['字段','非空记录数'],...keys.slice(0,30).map(k=>[names.get(k)||k,rows.filter(r=>r[k]!==null&&r[k]!==undefined&&r[k]!=='').length])];
 summary.getRange('A10:B40').format={columnWidth:45,rowHeight:24};
+if(runMetadata){
+ const run=JSON.parse(await fs.readFile(runMetadata,'utf8'));
+ summary.getRange('A43:B49').values=[['运行时间','含UTC偏移'],['开始',run.started_at],['结束',run.ended_at||'运行中'],['计划截止',run.deadline||'无'],['时区',run.timezone],['状态',run.status],['停止原因',run.stop_reason||'']];
+ summary.getRange('A43:B49').format={columnWidth:45,wrapText:true,rowHeight:30};
+}
 wb.recalculate();
 await (await SpreadsheetFile.exportXlsx(wb)).save(target);

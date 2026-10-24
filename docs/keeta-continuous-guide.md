@@ -11,6 +11,7 @@
 | --max-attempts | 每进程尝试上限，默认3；README显式20 |
 | --resume | 现有会话目录；省略则创建圣保罗启动时间戳会话 |
 | --keep-screenshots | 最近几次尝试保留PNG，默认10；0表示不保留尝试PNG |
+| --stop-at / --run-timezone | 当天截止HH:MM及其时区，默认America/Vancouver；到时停止设备采集并保存起止时间 |
 | --access-restored | 仅在人工确认恢复后归档访问暂停标记；不自动绕过限制 |
 
 Ctrl+C停止；每次成功或部分采集先事务提交账本，再原子替换CSV/XLSX。同一设备/会话不得同时启动多个进程。换账号或设备新建会话。需要人工介入时暂停。
@@ -66,4 +67,10 @@ python3 scripts/keeta_scripe-v4.py --inspect-context-dir outputs/internal/stream
 
 仅解析本地XML并写内部来源/草稿，不访问手机。为保留原始摘要，诊断历史证据前先复制到新内部目录。单条导出辅助命令 `--export-run` 使用 `export_keeta.mjs`，只对地址和金额校验通过的单条报价成对发布 `latest_时间戳.csv/xlsx`，不会覆盖已有同名结果；连续运行不使用此路径。
 
-离线验证：`python3 -m unittest discover -s tests -v`。当前32项通过；实机长期成功率和规模尚未验收。
+离线验证：`python3 -m unittest discover -s tests -v`。当前35项通过；实机长期成功率和规模尚未验收。
+
+截止运行：基于SIGALRM可中断等待和采集；截止后禁用闹钟、停止唤醒线程、记录实际采集结束，再保存当前尝试及快照。导出完成时间另记export_finished_at。运行摘要保存在internal会话executions与run-status.json，Excel成功率页显示带UTC偏移的起止/截止时间。已过时的当天截止输入拒绝启动。离线测试包含真实短时闹钟中断测试。
+
+## 持续模式
+
+`--continuous`持续追加直到手动停止、可选截止或安全停止，忽略max-attempts上限。单窗口最多4次滚动/6张卡片后保存游标、等待至少180秒再推进；连续三个窗口无新店或12页深度预算耗尽则停止。游标只是当前首页顺序的近似位置，动态排序可能改变，店名去重仍执行，不保证全量覆盖。后台运行不代表会绕过安全停止。35项离线测试通过。
